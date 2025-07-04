@@ -1,0 +1,36 @@
+1. Generate the Client Certificate and Key
+Run this command in your terminal (Linux, macOS, or Windows with OpenSSL):
+
+openssl req -x509 -newkey rsa:4096 -keyout client.key -out client.crt -days 365 -nodes -subj "/CN=osmium-client"
+
+This creates two files in your current directory:
+client.crt (the client certificate)
+client.key (the private key)
+
+
+2. Add the Certificate to the LXD Server’s Trust Store
+Copy client.crt to your LXD server (if you generated it elsewhere), then on the LXD server run:
+
+lxc config trust add client.crt
+
+This will add the certificate to the LXD server’s trust store and allow it to connect.
+
+3. Copy the Certificate and Key Contents
+On Linux/macOS:
+
+cat client.crt
+cat client.key
+
+4. Add to the Osmium Panel
+Go to your panel’s “Add Host” form.
+Paste the contents of client.crt into the Client Certificate (PEM) field.
+Paste the contents of client.key into the Client Key (PEM) field.
+(Optional) If your LXD server uses a custom CA, paste its certificate into the CA Certificate (PEM, optional) field.
+
+
+to allow lxd api to contact
+
+lxc config set core.https_address [::]:8443
+
+check config value
+lxc config get core.https_address

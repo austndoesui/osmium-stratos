@@ -1,0 +1,23 @@
+{
+  "name": "osmium-stratos",
+  "version": "1.0.0",
+  "description": "the vm management panel",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "keywords": [
+    "vm"
+  ],
+  "author": "crater",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.10.0",
+    "cheerio": "^1.1.0",
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.7",
+    "toml": "^3.0.0",
+    "ws": "^8.18.3"
+  }
+}

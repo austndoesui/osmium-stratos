@@ -1,0 +1,7 @@
+# Osmium Configuration
+
+[server]
+port = 3000
+
+[database]
+name = "osmium.db"
