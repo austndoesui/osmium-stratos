@@ -2,8 +2,8 @@ const https = require('https');
 const { parseImageSource } = require('./image');
 
 // Create a new VM or container on a given host
-function createVM(host, { name, imageAlias, type }, callback) {
-  console.log('createVM called with:', { host: host.address, name, imageAlias, type });
+function createVM(host, { name, imageAlias, type, cpu, ram, disk }, callback) {
+  console.log('createVM called with:', { host: host.address, name, imageAlias, type, cpu, ram, disk });
   const url = new URL(host.address);
 
   // Step 1: Check if instance with the same name exists
@@ -49,15 +49,23 @@ function createVM(host, { name, imageAlias, type }, callback) {
   function createInstance() {
     const src = parseImageSource(imageAlias);
     const isVM = (type === 'virtual-machine');
-    const instanceConfig = isVM
-      ? {
-          "limits.cpu": "1",
-          "limits.memory": "1GB"
-        }
-      : {};
+    const instanceConfig = {};
+    if (isVM) {
+      if (cpu) instanceConfig["limits.cpu"] = String(cpu);
+      if (ram) instanceConfig["limits.memory"] = String(ram).match(/\d+GB$/i) ? String(ram) : `${ram}GB`;
+    }
+    const devices = {};
+    if (disk) {
+      devices.root = {
+        type: 'disk',
+        path: '/',
+        pool: 'default', // You may want to make this configurable
+        size: String(disk).match(/\d+GB$/i) ? String(disk) : `${disk}GB`
+      };
+    }
     const postData = JSON.stringify({
       name,
-      architecture: 'x86_64',
+      architecture: 'x86_4',
       type: type || 'virtual-machine',
       source: {
         type: 'image',
@@ -67,6 +75,7 @@ function createVM(host, { name, imageAlias, type }, callback) {
         protocol: src.protocol,
       },
       config: instanceConfig,
+      ...(Object.keys(devices).length > 0 ? { devices } : {}),
     });
     console.log('LXD API POST /1.0/instances payload:', postData);
     const options = {
@@ -100,7 +109,56 @@ function createVM(host, { name, imageAlias, type }, callback) {
             return callback(new Error('No valid operation ID returned by LXD.'));
           }
           // Poll the operation endpoint
-          pollOperation(opId, 0, callback);
+          pollOperation(opId, 0, function pollCb(err, opResp) {
+            if (err) return callback(err);
+            // After successful creation, always set limits.memory and limits.cpu if provided
+            if (cpu || ram) {
+              const patchConfig = {};
+              if (cpu) patchConfig["limits.cpu"] = String(cpu);
+              if (ram) patchConfig["limits.memory"] = String(ram).match(/\d+GB$/i) ? String(ram) : `${ram}GB`;
+              const patchData = JSON.stringify({ config: patchConfig });
+              const patchOptions = {
+                hostname: url.hostname,
+                port: url.port,
+                path: `/1.0/instances/${encodeURIComponent(name)}`,
+                method: 'PATCH',
+                cert: host.cert,
+                key: host.key,
+                ca: host.ca || undefined,
+                rejectUnauthorized: false,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(patchData),
+                },
+                timeout: 20000,
+              };
+              const patchReq = https.request(patchOptions, (patchRes) => {
+                let patchResData = '';
+                patchRes.on('data', (chunk) => { patchResData += chunk; });
+                patchRes.on('end', () => {
+                  if (patchRes.statusCode !== 200) {
+                    console.error('Failed to set instance limits after creation:', patchRes.statusCode, patchResData);
+                  }
+                  // Always call the main callback with the original opResp
+                  return callback(null, opResp);
+                });
+              });
+              patchReq.on('error', (err) => {
+                console.error('Error setting instance limits after creation:', err);
+                return callback(null, opResp); // Still succeed
+              });
+              patchReq.on('timeout', () => {
+                patchReq.destroy();
+                console.error('Timeout setting instance limits after creation');
+                return callback(null, opResp); // Still succeed
+              });
+              patchReq.write(patchData);
+              patchReq.end();
+            } else {
+              // No limits to set, just callback
+              return callback(null, opResp);
+            }
+          });
         } else {
           console.error('LXD API error:', res.statusCode, data);
           callback(new Error('LXD API error: ' + data));

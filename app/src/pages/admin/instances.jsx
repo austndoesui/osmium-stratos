@@ -8,7 +8,7 @@ export default function AdminInstances() {
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [hosts, setHosts] = useState([]);
-  const [form, setForm] = useState({ hostId: '', name: '', imageAlias: '', type: 'virtual-machine' });
+  const [form, setForm] = useState({ hostId: '', name: '', imageAlias: '', type: 'virtual-machine', cpu: '', ram: '', disk: '' });
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [imageOptions, setImageOptions] = useState([]);
@@ -116,13 +116,21 @@ export default function AdminInstances() {
     fetch(`/api/hosts/${form.hostId}/vms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: form.name, imageAlias: form.imageAlias, type: form.type, user_id: selectedUser ? selectedUser.id : null }),
+      body: JSON.stringify({
+        name: form.name,
+        imageAlias: form.imageAlias,
+        type: form.type,
+        user_id: selectedUser ? selectedUser.id : null,
+        cpu: form.cpu ? Number(form.cpu) : undefined,
+        ram: form.ram ? Number(form.ram) : undefined,
+        disk: form.disk ? Number(form.disk) : undefined,
+      }),
     })
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         if (!ok) throw new Error(data.error || 'Failed to create instance');
         setResult('Instance creation started!');
-        setForm({ hostId: '', name: '', imageAlias: '', type: 'virtual-machine' });
+        setForm({ hostId: '', name: '', imageAlias: '', type: 'virtual-machine', cpu: '', ram: '', disk: '' });
         setSelectedUser(null);
         setUserQuery('');
         setTimeout(() => {
@@ -220,16 +228,14 @@ export default function AdminInstances() {
             </button>
             
             {showModal && (
-              <div 
-                className="absolute right-0 top-full mt-2 z-50 w-96 origin-top-right"
-                style={{ animation: 'fadeInDown 0.2s ease-out forwards' }}
-              >
+              <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
                 <div 
                   ref={modalRef}
-                  className="bg-gray-800 rounded-lg shadow-xl border border-gray-700 overflow-hidden"
+                  className="bg-gray-800 rounded-lg shadow-xl w-96 border border-gray-700"
+                  style={{ animation: 'fadeInDown 0.2s ease-out forwards' }}
                 >
                   <div className="flex justify-between items-center p-4 border-b border-gray-700">
-                    <h3 className="text-lg font-medium text-white">Create VM/Container</h3>
+                    <h3 className="text-lg font-medium text-white">Create Instance</h3>
                     <button 
                       className="text-gray-400 hover:text-white cursor-pointer"
                       onClick={() => setShowModal(false)}
@@ -293,6 +299,44 @@ export default function AdminInstances() {
                           <option value="">Select an image</option>
                           {imageOptions.map(img => <option key={img.value} value={img.value}>{img.label}</option>)}
                         </select>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-1">CPU Cores</label>
+                          <input 
+                            type="number"
+                            name="cpu" 
+                            min="1"
+                            value={form.cpu}
+                            onChange={handleChange}
+                            className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-1">Memory (GB)</label>
+                          <input 
+                            type="number"
+                            name="ram" 
+                            min="1"
+                            value={form.ram}
+                            onChange={handleChange}
+                            className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-1">Storage (GB)</label>
+                          <input 
+                            type="number"
+                            name="disk" 
+                            min="1"
+                            value={form.disk}
+                            onChange={handleChange}
+                            className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
+                          />
+                        </div>
                       </div>
                       
                       {form.type === 'virtual-machine' && form.imageAlias && !isSelectedImageVMSupported() && (

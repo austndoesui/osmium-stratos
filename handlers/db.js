@@ -45,6 +45,9 @@ db.serialize(() => {
     host_id INTEGER NOT NULL,
     lxd_name TEXT NOT NULL,
     user_id INTEGER,
+    cpu INTEGER,
+    ram INTEGER,
+    disk INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (host_id) REFERENCES host(id),
     FOREIGN KEY (user_id) REFERENCES users(id)

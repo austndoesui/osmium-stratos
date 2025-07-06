@@ -360,7 +360,7 @@ export default function MainLayout({ children }) {
         {/* Main content */}
         <main className="flex-1 overflow-y-auto bg-gray-900">
           <div className="p-4 sm:p-6 lg:p-8">
-            {children}
+          {children}
           </div>
           
           {/* Instance navigation bar - only shown on instance pages and injected after instance name */}
@@ -410,16 +410,6 @@ export default function MainLayout({ children }) {
                   }`}
                 >
                   Resize
-                </Link>
-                <Link
-                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$/, '')}/backups`}
-                  className={`whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm ${
-                    location.pathname.endsWith('/backups') 
-                      ? 'border-white text-white' 
-                      : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
-                  }`}
-                >
-                  Backups
                 </Link>
                 <Link
                   to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$/, '')}/history`}

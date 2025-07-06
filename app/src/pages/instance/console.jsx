@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import MainLayout from '../../components/mainlayout';
+import { Link } from 'react-router-dom';
+import { useNotification } from '../../providers/NotificationProvider';
 // Import xterm.js and CSS
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
-import { Link } from 'react-router-dom';
 
 export default function Console() {
   const { hostId, instanceName } = useParams();
@@ -23,8 +24,31 @@ export default function Console() {
   const loadingTimerRef = useRef(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const progressIntervalRef = useRef(null);
+  const [instanceInfo, setInstanceInfo] = useState(null);
+  const [loading, setLoading] = useState('');
+  const notification = useNotification();
 
   useEffect(() => {
+    // Fetch instance information
+    fetch('/api/vms')
+      .then(res => res.json())
+      .then(data => {
+        // Flatten all instances
+        const allInstances = [];
+        data.forEach(({ host, vms }) => {
+          if (Array.isArray(vms)) {
+            vms.forEach(vm => {
+              allInstances.push({ ...vm, host });
+            });
+          }
+        });
+        // Find the instance by hostId and instanceName
+        const found = allInstances.find(
+          vm => String(vm.host.id) === String(hostId) && vm.name === instanceName
+        );
+        setInstanceInfo(found || null);
+      });
+
     // Move the navigation bar from mainlayout to below the instance name
     setTimeout(() => {
       const nav = document.getElementById('instance-nav');
@@ -43,7 +67,7 @@ export default function Console() {
       fontSize: fontSize,
       fontFamily: '"JetBrains Mono", monospace',
       theme: { 
-        background: '#0f172a', // Slightly darker blue than the main background
+        background: 'rgb(31 41 55)', // Changed from #0f172a to match bg-gray-800
         foreground: '#f8f8f2',
         cursor: '#f8f8f2',
         selection: 'rgba(255, 255, 255, 0.3)',
@@ -235,7 +259,7 @@ export default function Console() {
       }
       
       if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
-      ws.close();
+        ws.close();
       }
       term.dispose();
     };
@@ -393,6 +417,62 @@ export default function Console() {
     }
   };
 
+  const handleAction = (action) => {
+    setLoading(action);
+    
+    fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/${action}`, {
+      method: 'POST',
+    })
+      .then(res => {
+        if (!res.ok) {
+          return res.json().then(data => {
+            throw new Error(data.error || `Failed to ${action} instance`);
+          });
+        }
+        return res.json();
+      })
+      .then(() => {
+        notification.showSuccess(`${action.charAt(0).toUpperCase() + action.slice(1)} command sent!`);
+        
+        // Refresh instance info after a successful action
+        setTimeout(() => {
+          fetch('/api/vms')
+            .then(res => res.json())
+            .then(data => {
+              const allInstances = [];
+              data.forEach(({ host, vms }) => {
+                if (Array.isArray(vms)) {
+                  vms.forEach(vm => {
+                    allInstances.push({ ...vm, host });
+                  });
+                }
+              });
+              const found = allInstances.find(
+                vm => String(vm.host.id) === String(hostId) && vm.name === instanceName
+              );
+              setInstanceInfo(found || null);
+            });
+        }, 2000);
+      })
+      .catch(err => {
+        notification.showError(err.message);
+      })
+      .finally(() => {
+        setLoading('');
+      });
+  };
+
+  // Helper to normalize status string
+  const normalizedStatus = (status) => (status ? status.toLowerCase() : '');
+
+  const getStatusColor = (status) => {
+    if (!status) return 'bg-gray-700 text-gray-300 border border-gray-600';
+    status = normalizedStatus(status);
+    if (status === 'running') return 'bg-green-900/40 text-green-400 border border-green-700';
+    if (status === 'stopped') return 'bg-red-900/40 text-red-400 border border-red-700';
+    return 'bg-yellow-900/40 text-yellow-400 border border-yellow-700';
+  };
+
   const content = (
     <>
       {/* Breadcrumb navigation */}
@@ -438,27 +518,105 @@ export default function Console() {
 
       {/* Main heading */}
       <div className="flex justify-between items-center mb-2">
-        <h1 className="text-2xl font-semibold text-white">{instanceName}</h1>
         <div className="flex items-center">
-          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-            connectionStatus === 'connected' ? 'bg-green-900/40 text-green-400' :
-            connectionStatus === 'disconnected' ? 'bg-red-900/40 text-red-400' :
-            connectionStatus === 'error' ? 'bg-red-900/40 text-red-400' :
-            'bg-yellow-900/40 text-yellow-400'
-          }`}>
-            {connectionStatus === 'connected' ? 'Connected' :
-             connectionStatus === 'disconnected' ? 'Disconnected' :
-             connectionStatus === 'error' ? 'Connection Error' :
-             'Connecting...'}
+          <h1 className="text-2xl font-semibold text-white mr-3">{instanceName}</h1>
+          <span
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors duration-200 ${getStatusColor(instanceInfo?.status)}`}
+            title={instanceInfo?.status || 'Unknown'}
+          >
+            {instanceInfo?.status ? instanceInfo.status.charAt(0).toUpperCase() + instanceInfo.status.slice(1) : 'Unknown'}
           </span>
-          {(connectionStatus === 'disconnected' || connectionStatus === 'error') && (
-            <button 
-              onClick={reconnect}
-              className="ml-2 px-3 py-1 bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 text-xs rounded"
-            >
-              Reconnect
-            </button>
+          {connectionStatus !== 'connected' && (
+            <>
+              <span className={`ml-2 px-3 py-1 rounded-full text-xs font-medium ${
+                connectionStatus === 'disconnected' ? 'bg-red-900/40 text-red-400 border border-red-700' :
+                connectionStatus === 'error' ? 'bg-red-900/40 text-red-400 border border-red-700' :
+                'bg-yellow-900/40 text-yellow-400 border border-yellow-700'
+              }`}>
+                {connectionStatus === 'disconnected' ? 'Disconnected' :
+                 connectionStatus === 'error' ? 'Connection Error' :
+                 'Connecting...'}
+              </span>
+              {(connectionStatus === 'disconnected' || connectionStatus === 'error') && (
+                <button 
+                  onClick={reconnect}
+                  className="ml-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-md font-medium"
+                >
+                  Reconnect
+                </button>
+              )}
+            </>
           )}
+        </div>
+        <div className="flex space-x-3">
+          <button
+            className={`flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${normalizedStatus(instanceInfo?.status) === 'running' ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+            disabled={loading === 'start' || normalizedStatus(instanceInfo?.status) === 'running'}
+            onClick={() => handleAction('start')}
+          >
+            {loading === 'start' ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Starting...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+                Start
+              </>
+            )}
+          </button>
+          
+          <button
+            className={`flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${normalizedStatus(instanceInfo?.status) !== 'running' ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+            disabled={loading === 'stop' || normalizedStatus(instanceInfo?.status) !== 'running'}
+            onClick={() => handleAction('stop')}
+          >
+            {loading === 'stop' ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Stopping...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
+                </svg>
+                Stop
+              </>
+            )}
+          </button>
+          
+          <button
+            className={`flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${normalizedStatus(instanceInfo?.status) !== 'running' ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700 text-white'}`}
+            disabled={loading === 'restart' || normalizedStatus(instanceInfo?.status) !== 'running'}
+            onClick={() => handleAction('restart')}
+          >
+            {loading === 'restart' ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Restarting...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                </svg>
+                Restart
+              </>
+            )}
+          </button>
         </div>
       </div>
       
@@ -468,7 +626,7 @@ export default function Console() {
       {/* Terminal container */}
       <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-md overflow-hidden">
         {/* Terminal toolbar */}
-        <div className="p-2 border-b border-gray-700 bg-gray-900 flex flex-wrap items-center justify-between">
+        <div className="p-2 border-b border-gray-700 bg-gray-800 flex flex-wrap items-center justify-between">
           <div className="flex items-center">
             <h2 className="text-lg font-medium text-white mr-4">Console</h2>
           </div>
@@ -513,7 +671,7 @@ export default function Console() {
         {/* Terminal with loading overlay */}
         <div 
           ref={terminalContainerRef} 
-          className={`relative bg-[#0f172a] p-2 w-full ${isFullscreen ? 'fullscreen-terminal' : ''}`}
+          className={`relative bg-gray-800 p-2 w-full ${isFullscreen ? 'fullscreen-terminal' : ''}`}
           style={{ height: isFullscreen ? '100vh' : 'calc(100vh - 300px)', minHeight: '400px', position: 'relative' }}
         >
           <div ref={termRef} className="h-full w-full" />
@@ -521,7 +679,7 @@ export default function Console() {
           {/* Loading overlay - positioned absolutely over the terminal */}
           {isLoading && (
             <div 
-              className="absolute top-0 left-0 right-0 bottom-0 bg-[#0f172a] bg-opacity-95 flex flex-col items-center justify-center"
+              className="absolute top-0 left-0 right-0 bottom-0 bg-gray-800 bg-opacity-95 flex flex-col items-center justify-center"
               style={{ zIndex: 1000 }}
             >
               <div className="w-full max-w-md px-8 mb-6">

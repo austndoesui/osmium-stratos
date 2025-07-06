@@ -47,7 +47,7 @@ function Dashboard() {
       })
       .catch(err => {
         console.error('Error fetching dashboard data:', err);
-      })
+        })
       .finally(() => setLoading(false));
   }, [user]);
 

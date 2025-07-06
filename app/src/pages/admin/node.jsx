@@ -208,13 +208,11 @@ export default function AdminNode() {
             </button>
             
             {showModal && (
-              <div 
-                className="absolute right-0 top-full mt-2 z-50 w-96 origin-top-right"
-                style={{ animation: 'fadeInDown 0.2s ease-out forwards' }}
-              >
+              <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
                 <div 
                   ref={modalRef}
-                  className="bg-gray-800 rounded-lg shadow-xl border border-gray-700 overflow-hidden"
+                  className="bg-gray-800 rounded-lg shadow-xl w-96 border border-gray-700 max-h-[90vh] flex flex-col"
+                  style={{ animation: 'fadeInDown 0.2s ease-out forwards' }}
                 >
                   <div className="flex justify-between items-center p-4 border-b border-gray-700">
                     <h3 className="text-lg font-medium text-white">Add Host</h3>
@@ -228,7 +226,7 @@ export default function AdminNode() {
                     </button>
                   </div>
                   
-                  <div className="p-4">
+                  <div className="p-4 overflow-y-auto">
                     <form onSubmit={handleSubmit} className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
@@ -290,7 +288,7 @@ export default function AdminNode() {
                           className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
                           rows={3}
                         />
-        </div>
+                      </div>
                       
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-1">CA Certificate (PEM, Optional)</label>
@@ -302,18 +300,18 @@ export default function AdminNode() {
                           className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
                           rows={3}
                         />
-        </div>
+                      </div>
                       
                       {formError && (
                         <div className="bg-red-900/40 border border-red-500/50 text-red-200 px-4 py-3 rounded-md">
                           {formError}
-        </div>
+                        </div>
                       )}
                       
                       {formSuccess && (
                         <div className="bg-green-900/40 border border-green-500/50 text-green-200 px-4 py-3 rounded-md">
                           {formSuccess}
-        </div>
+                        </div>
                       )}
                       
                       <div className="flex justify-end space-x-3 pt-2">
@@ -329,10 +327,10 @@ export default function AdminNode() {
                           disabled={submitting}
                           className={`bg-white hover:bg-gray-200 text-gray-900 px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
-          {submitting ? 'Adding...' : 'Add Host'}
-        </button>
+                          {submitting ? 'Adding...' : 'Add Host'}
+                        </button>
                       </div>
-      </form>
+                    </form>
                   </div>
                 </div>
               </div>
@@ -409,13 +407,13 @@ export default function AdminNode() {
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                        <button
+                    <button
                           className="text-red-400 hover:text-red-300 transition-colors cursor-pointer"
-                          onClick={() => handleDelete(host.id)}
-                          disabled={deletingId === host.id}
-                        >
-                          {deletingId === host.id ? 'Deleting...' : 'Delete'}
-                        </button>
+                      onClick={() => handleDelete(host.id)}
+                      disabled={deletingId === host.id}
+                    >
+                      {deletingId === host.id ? 'Deleting...' : 'Delete'}
+                    </button>
                       </td>
                     </tr>
                   ))}

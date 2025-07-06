@@ -102,19 +102,19 @@ router.post('/hosts/:id/verify', (req, res) => {
 
 // Create a VM or container on a host
 router.post('/hosts/:id/vms', (req, res) => {
-  const { name, imageAlias, type, user_id } = req.body;
+  const { name, imageAlias, type, user_id, cpu, ram, disk } = req.body;
   if (!name || !imageAlias) {
     return res.status(400).json({ error: 'Instance name and image alias are required' });
   }
   hosts.getHost(req.params.id, (err, host) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!host) return res.status(404).json({ error: 'Host not found' });
-    instance.createVM(host, { name, imageAlias, type }, (err, result) => {
+    instance.createVM(host, { name, imageAlias, type, cpu, ram, disk }, (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
       // Insert into instances table
       db.run(
-        'INSERT INTO instances (name, host_id, lxd_name, user_id) VALUES (?, ?, ?, ?)',
-        [name, host.id, name, user_id || null],
+        'INSERT INTO instances (name, host_id, lxd_name, user_id, cpu, ram, disk) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [name, host.id, name, user_id || null, cpu || null, ram || null, disk || null],
         function (dbErr) {
           if (dbErr) {
             console.error('Failed to insert instance into DB:', dbErr);

@@ -12,6 +12,7 @@ import AdminUsers from './pages/admin/users';
 import AdminInstances from './pages/admin/instances';
 import InstanceOverview from './pages/instance/overview';
 import Console from './pages/instance/console';
+import Metrics from './pages/instance/metrics';
 import Auth from './pages/auth';
 import Instances from './pages/instances';
 import Account from './pages/account';
@@ -97,6 +98,7 @@ function AppRoutes() {
       <Route path="/admin/instances" element={<RequireAdmin><AdminInstances /></RequireAdmin>} />
       <Route path="/instance/:hostId/:instanceName" element={<RequireAuth><InstanceOverview /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/console" element={<RequireAuth><Console /></RequireAuth>} />
+      <Route path="/instance/:hostId/:instanceName/metrics" element={<RequireAuth><Metrics /></RequireAuth>} />
     </Routes>
   );
 }

@@ -1,0 +1,36 @@
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const dbPath = path.join(__dirname, 'osmium.db');
+const db = new sqlite3.Database(dbPath);
+
+function addColumnIfNotExists(table, column, type) {
+  return new Promise((resolve, reject) => {
+    db.all(`PRAGMA table_info(${table})`, (err, columns) => {
+      if (err) return reject(err);
+      if (!columns.some(col => col.name === column)) {
+        db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`, (err) => {
+          if (err) return reject(err);
+          console.log(`Added column ${column} to ${table}`);
+          resolve();
+        });
+      } else {
+        console.log(`Column ${column} already exists in ${table}`);
+        resolve();
+      }
+    });
+  });
+}
+
+(async () => {
+  try {
+    await addColumnIfNotExists('instances', 'cpu', 'INTEGER');
+    await addColumnIfNotExists('instances', 'ram', 'INTEGER');
+    await addColumnIfNotExists('instances', 'disk', 'INTEGER');
+    db.close();
+    console.log('Migration complete.');
+  } catch (err) {
+    console.error('Migration failed:', err);
+    db.close();
+    process.exit(1);
+  }
+})(); 
