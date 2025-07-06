@@ -30,6 +30,25 @@ db.serialize(() => {
     label TEXT NOT NULL,
     value TEXT NOT NULL
   )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user'
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS instances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    host_id INTEGER NOT NULL,
+    lxd_name TEXT NOT NULL,
+    user_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (host_id) REFERENCES host(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
 });
 
 module.exports = db;

@@ -1,0 +1,202 @@
+import MainLayout from '../../components/mainlayout';
+import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+
+export default function AdminUsers() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch('/api/users')
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! Status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data => {
+        setUsers(data);
+        setError(null);
+      })
+      .catch(err => {
+        console.error('Error fetching users:', err);
+        setError('Failed to load users. Please try again later.');
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Never';
+    try {
+      const date = new Date(dateString);
+      return date.toISOString().split('T')[0] + ' ' + 
+             date.toTimeString().split(' ')[0].substring(0, 5);
+    } catch (e) {
+      return dateString;
+    }
+  };
+
+  const getAvatar = (user) => {
+    if (user.avatar) {
+      return <img src={user.avatar} alt={user.username} className="h-8 w-8 rounded-full" />;
+    }
+    const seed = user.username || 'default';
+    const avatarUrl = `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(seed)}`;
+    return <img src={avatarUrl} alt={user.username} className="h-8 w-8 rounded-full bg-gray-700" />;
+  };
+
+  const handleDelete = (id, username) => {
+    if (!window.confirm(`Are you sure you want to delete user '${username}'? This action cannot be undone.`)) return;
+    fetch(`/api/users/${id}`, {
+      method: 'DELETE',
+    })
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Failed to delete user');
+        }
+        setUsers(users => users.filter(u => u.id !== id));
+      })
+      .catch(err => {
+        alert('Error deleting user: ' + err.message);
+      });
+  };
+
+  return (
+    <MainLayout>
+      <div className="p-4 md:p-6">
+        <div className="mb-4">
+          <nav className="flex" aria-label="Breadcrumb">
+            <ol className="inline-flex items-center space-x-1 md:space-x-2">
+              <li className="inline-flex items-center">
+                <Link to="/" className="text-sm text-gray-400 hover:text-white">
+                  Home
+                </Link>
+              </li>
+              <li>
+                <div className="flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <Link to="/admin" className="text-sm text-gray-400 hover:text-white ml-1 md:ml-2">
+                    Admin
+                  </Link>
+                </div>
+              </li>
+              <li aria-current="page">
+                <div className="flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-sm font-medium text-gray-300 ml-1 md:ml-2">Users</span>
+                </div>
+              </li>
+            </ol>
+          </nav>
+        </div>
+        
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-2xl font-semibold text-white">User Management</h1>
+            <p className="text-base text-gray-400">View and manage user accounts</p>
+          </div>
+          <button className="bg-white hover:bg-gray-200 text-gray-900 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+            </svg>
+            Add User
+          </button>
+        </div>
+        
+        <div className="bg-gray-800 rounded-lg shadow-md border border-gray-700 overflow-hidden">
+          <div className="p-4 border-b border-gray-700">
+            <h2 className="text-lg font-medium text-white">All Users</h2>
+          </div>
+          
+          {error && (
+            <div className="p-4 text-center text-red-400 border-b border-gray-700">
+              {error}
+            </div>
+          )}
+          
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-700">
+              <thead className="bg-gray-700/50">
+                <tr>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Username</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
+                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700 bg-gray-800">
+                {loading ? (
+                  <tr>
+                    <td colSpan="4" className="px-4 py-12 text-center">
+                      <div className="flex justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                      </div>
+                      <div className="mt-2 text-sm text-gray-400">Loading users...</div>
+                    </td>
+                  </tr>
+                ) : users.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" className="px-4 py-8 text-center">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-700/30 mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                      <div className="text-gray-400 font-medium">No users found</div>
+                      <p className="text-gray-500 text-sm mt-1">Create a new user to get started</p>
+                    </td>
+                  </tr>
+                ) : (
+                  users.map((user, index) => (
+                    <tr key={user.id || index} className="hover:bg-gray-700/30">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center">
+                          {getAvatar(user)}
+                          <div className="ml-3 text-sm font-medium text-white">{user.username}</div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-xs text-gray-400">{user.email}</div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          user.role === 'admin' ? 'bg-purple-900/30 text-purple-300' : 'bg-blue-900/30 text-blue-300'
+                        }`}>
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
+                        <button className="text-white hover:text-gray-300 mr-3 transition-colors">Edit</button>
+                        <button className="text-red-400 hover:text-red-300 transition-colors" onClick={() => handleDelete(user.id, user.username)}>Delete</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          
+          <div className="px-4 py-3 border-t border-gray-700 flex items-center justify-between">
+            <div className="text-sm text-gray-400">
+              Showing <span className="font-medium text-white">{users.length > 0 ? `1-${users.length}` : '0'}</span> of <span className="font-medium text-white">{users.length}</span> users
+            </div>
+            <div className="flex space-x-1">
+              <button className="px-2 py-1 border border-gray-600 rounded-md text-gray-400 text-sm disabled:opacity-50" disabled>
+                Previous
+              </button>
+              <button className="px-2 py-1 border border-gray-600 rounded-md text-gray-400 text-sm disabled:opacity-50" disabled>
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </MainLayout>
+  );
+}

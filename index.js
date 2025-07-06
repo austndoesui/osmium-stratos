@@ -9,8 +9,14 @@ const websocket = require('./modules/websocket');
 const app = express();
 const PORT = process.env.PORT || config.server.port || 3000;
 
-// Parse JSON bodies
+// Parse JSON bodiesy
 app.use(express.json());
+
+// Log all incoming requests
+app.use((req, res, next) => {
+  console.log('Incoming request:', req.method, req.url);
+  next();
+});
 
 // Mount API routes at /api
 app.use('/api', router);

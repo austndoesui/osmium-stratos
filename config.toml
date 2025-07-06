@@ -5,3 +5,8 @@ port = 3000
 
 [database]
 name = "osmium.db"
+
+[session]
+secret = "repace-this-with-a-long-random-secret-key"
+
+

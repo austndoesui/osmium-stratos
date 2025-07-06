@@ -5,8 +5,14 @@ const imageModule = require('../modules/image');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const websocket = require('../modules/websocket');
+const { setupAuth } = require('../modules/auth');
+const db = require('./db');
+const { getAllUsers, deleteUserById } = require('./get-users');
 
 const router = express.Router();
+
+// Apply Passport.js auth
+setupAuth(router);
 
 // List all hosts
 router.get('/hosts', (req, res) => {
@@ -96,7 +102,7 @@ router.post('/hosts/:id/verify', (req, res) => {
 
 // Create a VM or container on a host
 router.post('/hosts/:id/vms', (req, res) => {
-  const { name, imageAlias, type } = req.body;
+  const { name, imageAlias, type, user_id } = req.body;
   if (!name || !imageAlias) {
     return res.status(400).json({ error: 'Instance name and image alias are required' });
   }
@@ -105,7 +111,19 @@ router.post('/hosts/:id/vms', (req, res) => {
     if (!host) return res.status(404).json({ error: 'Host not found' });
     instance.createVM(host, { name, imageAlias, type }, (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
-      res.status(201).json(result);
+      // Insert into instances table
+      db.run(
+        'INSERT INTO instances (name, host_id, lxd_name, user_id) VALUES (?, ?, ?, ?)',
+        [name, host.id, name, user_id || null],
+        function (dbErr) {
+          if (dbErr) {
+            console.error('Failed to insert instance into DB:', dbErr);
+            // Still return LXD result, but warn about DB
+            return res.status(201).json({ ...result, dbWarning: 'Instance created in LXD but not saved in DB.' });
+          }
+          res.status(201).json({ ...result, instance_id: this.lastID });
+        }
+      );
     });
   });
 });
@@ -162,8 +180,31 @@ router.get('/vms', (req, res) => {
     let results = [];
     let completed = 0;
     hostRows.forEach((host) => {
-      instance.listVMsOnHost(host, (err, vms) => {
-        results.push({ host: { id: host.id, name: host.name, address: host.address }, vms: err ? { error: err.message } : vms });
+      instance.listVMsOnHost(host, async (err, vms) => {
+        if (err) {
+          results.push({ host: { id: host.id, name: host.name, address: host.address }, vms: { error: err.message } });
+        } else {
+          // Fetch instance ownership info from DB for this host
+          const dbInstances = await new Promise((resolve) => {
+            db.all(
+              `SELECT i.name, i.user_id, u.username, u.email FROM instances i LEFT JOIN users u ON i.user_id = u.id WHERE i.host_id = ?`,
+              [host.id],
+              (dbErr, rows) => {
+                if (dbErr) resolve([]);
+                else resolve(rows);
+              }
+            );
+          });
+          // Merge owner info into each LXD instance
+          const vmsWithOwner = Array.isArray(vms) ? vms.map(vm => {
+            const dbInst = dbInstances.find(i => i.name === vm.name);
+            return {
+              ...vm,
+              owner: dbInst && dbInst.user_id ? { username: dbInst.username, email: dbInst.email } : null,
+            };
+          }) : vms;
+          results.push({ host: { id: host.id, name: host.name, address: host.address }, vms: vmsWithOwner });
+        }
         completed++;
         if (completed === hostRows.length) {
           res.json(results);
@@ -224,6 +265,65 @@ router.post('/hosts/:id/vms/:name/restart', (req, res) => {
 // WebSocket console endpoint (placeholder for HTTP, real WS handled in index.js)
 router.get('/hosts/:id/vms/:name/console', (req, res) => {
   res.status(426).json({ error: 'Please connect via WebSocket.' });
+});
+
+// Register endpoint
+router.post('/register', async (req, res) => {
+  const { username, email, password, password_hash, role } = req.body;
+  if (!username || !email || (!password && !password_hash)) {
+    return res.status(400).json({ error: 'Username, email, and password are required.' });
+  }
+  try {
+    const bcrypt = require('bcrypt');
+    const hash = password_hash || await bcrypt.hash(password, 10);
+    const userRole = role && (role === 'admin' || role === 'user') ? role : 'user';
+    db.run(
+      'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)',
+      [username, email, hash, userRole],
+      function (err) {
+        if (err) {
+          if (err.message.includes('UNIQUE constraint failed')) {
+            return res.status(409).json({ error: 'Username or email already exists.' });
+          }
+          return res.status(500).json({ error: 'Database error.' });
+        }
+        res.status(201).json({ success: true, id: this.lastID, username, email, role: userRole });
+      }
+    );
+  } catch (e) {
+    res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+// List all users
+router.get('/users', (req, res) => {
+  getAllUsers((err, users) => {
+    if (err) {
+      console.error('Error fetching users:', err);
+      return res.status(500).json({ error: 'Failed to fetch users' });
+    }
+    res.json(users);
+  });
+});
+
+// Delete a user by id
+router.delete('/users/:id', (req, res) => {
+  const { id } = req.params;
+  deleteUserById(id, (err, result) => {
+    if (err) {
+      console.error('Error deleting user:', err);
+      return res.status(500).json({ error: 'Failed to delete user' });
+    }
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ success: true });
+  });
+});
+
+// Logout endpoint (for JWT, just for frontend consistency)
+router.post('/logout', (req, res) => {
+  res.json({ success: true });
 });
 
 module.exports = router;
