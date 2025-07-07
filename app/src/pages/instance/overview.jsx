@@ -11,6 +11,10 @@ export default function InstanceOverview() {
   const [hostAddress, setHostAddress] = useState('');
   const [instanceInfo, setInstanceInfo] = useState(null);
   const [loadingInfo, setLoadingInfo] = useState(true);
+  const [resourceInfo, setResourceInfo] = useState(null);
+  const [loadingResource, setLoadingResource] = useState(true);
+  const [dbConfig, setDbConfig] = useState(null);
+  const [loadingDbConfig, setLoadingDbConfig] = useState(true);
   const navigate = useNavigate();
   const navPlaceholderRef = useRef(null);
   const isMounted = useRef(true);
@@ -69,6 +73,39 @@ export default function InstanceOverview() {
         if (isMounted.current) {
           setInstanceInfo(null);
           setLoadingInfo(false);
+        }
+      });
+      
+    // Fetch resource usage for this instance
+    setLoadingResource(true);
+    fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/usage`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (isMounted.current) {
+          setResourceInfo(data);
+          setLoadingResource(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted.current) {
+          setResourceInfo(null);
+          setLoadingResource(false);
+        }
+      });
+    // Fetch instance config from DB
+    setLoadingDbConfig(true);
+    fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/config`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (isMounted.current) {
+          setDbConfig(data);
+          setLoadingDbConfig(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted.current) {
+          setDbConfig(null);
+          setLoadingDbConfig(false);
         }
       });
       
@@ -415,15 +452,30 @@ export default function InstanceOverview() {
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-gray-400">CPU:</span>
-                        <span className="text-white font-medium">1 vCPU</span>
+                        <span className="text-white font-medium">
+                          {loadingDbConfig ? 'Loading...' :
+                            dbConfig && dbConfig.cpu != null
+                              ? `${dbConfig.cpu} vCPU`
+                              : 'Unknown'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">Memory:</span>
-                        <span className="text-white font-medium">16 GiB</span>
+                        <span className="text-white font-medium">
+                          {loadingDbConfig ? 'Loading...' :
+                            dbConfig && dbConfig.ram != null && !isNaN(Number(dbConfig.ram))
+                              ? `${(Number(dbConfig.ram) / 1073741824).toFixed(2)} GiB`
+                              : 'Unknown'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">Disk:</span>
-                        <span className="text-white font-medium">128 GiB</span>
+                        <span className="text-white font-medium">
+                          {loadingDbConfig ? 'Loading...' :
+                            dbConfig && dbConfig.disk != null && !isNaN(Number(dbConfig.disk))
+                              ? `${(Number(dbConfig.disk) / 1073741824).toFixed(2)} GiB`
+                              : 'Unknown'}
+                        </span>
                       </div>
                     </div>
                   </div>

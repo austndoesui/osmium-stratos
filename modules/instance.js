@@ -52,7 +52,7 @@ function createVM(host, { name, imageAlias, type, cpu, ram, disk }, callback) {
     const instanceConfig = {};
     if (isVM) {
       if (cpu) instanceConfig["limits.cpu"] = String(cpu);
-      if (ram) instanceConfig["limits.memory"] = String(ram).match(/\d+GB$/i) ? String(ram) : `${ram}GB`;
+      if (ram) instanceConfig["limits.memory"] = String(ram);
     }
     const devices = {};
     if (disk) {
@@ -60,7 +60,7 @@ function createVM(host, { name, imageAlias, type, cpu, ram, disk }, callback) {
         type: 'disk',
         path: '/',
         pool: 'default', // You may want to make this configurable
-        size: String(disk).match(/\d+GB$/i) ? String(disk) : `${disk}GB`
+        size: String(disk)
       };
     }
     const postData = JSON.stringify({
@@ -115,7 +115,7 @@ function createVM(host, { name, imageAlias, type, cpu, ram, disk }, callback) {
             if (cpu || ram) {
               const patchConfig = {};
               if (cpu) patchConfig["limits.cpu"] = String(cpu);
-              if (ram) patchConfig["limits.memory"] = String(ram).match(/\d+GB$/i) ? String(ram) : `${ram}GB`;
+              if (ram) patchConfig["limits.memory"] = String(ram);
               const patchData = JSON.stringify({ config: patchConfig });
               const patchOptions = {
                 hostname: url.hostname,
@@ -412,6 +412,60 @@ function restartInstance(host, name, callback) {
   req.end();
 }
 
+// Fetch resource usage for a given instance on a host
+function getInstanceUsage(host, name, callback) {
+  const url = new URL(host.address);
+  const options = {
+    hostname: url.hostname,
+    port: url.port,
+    path: `/1.0/instances/${encodeURIComponent(name)}/state`,
+    method: 'GET',
+    cert: host.cert,
+    key: host.key,
+    ca: host.ca || undefined,
+    rejectUnauthorized: false,
+    timeout: 10000,
+  };
+  console.log('[getInstanceUsage] Request options:', options);
+  const req = https.request(options, (res) => {
+    let data = '';
+    res.on('data', (chunk) => { data += chunk; });
+    res.on('end', () => {
+      console.log('[getInstanceUsage] Response status:', res.statusCode);
+      if (res.statusCode === 200) {
+        try {
+          const parsed = JSON.parse(data);
+          console.log('[getInstanceUsage] Parsed response:', parsed);
+          const meta = parsed.metadata || {};
+          callback(null, {
+            cpu: meta.cpu ? meta.cpu.usage : null,
+            memory: meta.memory ? { usage: meta.memory.usage, usage_peak: meta.memory.usage_peak } : null,
+            disk: meta.disk ? meta.disk : null,
+            network: meta.network ? meta.network : null,
+            raw: meta // for debugging/future use
+          });
+        } catch (e) {
+          console.error('[getInstanceUsage] Failed to parse response:', e, data);
+          callback(new Error('Failed to parse LXD state response'));
+        }
+      } else {
+        console.error('[getInstanceUsage] LXD API error:', res.statusCode, data);
+        callback(new Error('LXD API error: ' + data));
+      }
+    });
+  });
+  req.on('error', (err) => {
+    console.error('[getInstanceUsage] Request error:', err);
+    callback(err);
+  });
+  req.on('timeout', () => {
+    req.destroy();
+    console.error('[getInstanceUsage] Request timed out');
+    callback(new Error('Connection timed out'));
+  });
+  req.end();
+}
+
 module.exports = {
   createVM,
   listVMsOnHost,
@@ -419,4 +473,5 @@ module.exports = {
   startInstance,
   stopInstance,
   restartInstance,
+  getInstanceUsage,
 };

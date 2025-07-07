@@ -81,6 +81,13 @@ export default function AdminInstances() {
     };
   }, [userQuery]);
 
+  useEffect(() => {
+    if (showModal) {
+      setSelectedUser(null);
+      setUserQuery('');
+    }
+  }, [showModal]);
+
   const fetchInstances = () => {
     setLoading(true);
     fetch('/api/vms')
@@ -113,6 +120,7 @@ export default function AdminInstances() {
     setSubmitting(true);
     setResult(null);
     setError(null);
+    console.log('[Instance Creation] selectedUser:', selectedUser);
     fetch(`/api/hosts/${form.hostId}/vms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -122,8 +130,8 @@ export default function AdminInstances() {
         type: form.type,
         user_id: selectedUser ? selectedUser.id : null,
         cpu: form.cpu ? Number(form.cpu) : undefined,
-        ram: form.ram ? Number(form.ram) : undefined,
-        disk: form.disk ? Number(form.disk) : undefined,
+        ram: form.ram ? Number(form.ram) * 1073741824 : undefined,
+        disk: form.disk ? Number(form.disk) * 1073741824 : undefined,
       }),
     })
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
@@ -151,6 +159,10 @@ export default function AdminInstances() {
     })
       .then(res => {
         if (!res.ok) throw new Error('Failed to delete instance');
+        if (selectedUser && instances.find(i => i.name === name && i.host.id === hostId && i.owner && i.owner.username === selectedUser.username)) {
+          setSelectedUser(null);
+          setUserQuery('');
+        }
         fetchInstances();
       })
       .catch(err => {
@@ -315,7 +327,7 @@ export default function AdminInstances() {
                         </div>
                         
                         <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-1">Memory (GB)</label>
+                          <label className="block text-sm font-medium text-gray-300 mb-1">Memory (GiB)</label>
                           <input 
                             type="number"
                             name="ram" 
@@ -327,7 +339,7 @@ export default function AdminInstances() {
                         </div>
                         
                         <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-1">Storage (GB)</label>
+                          <label className="block text-sm font-medium text-gray-300 mb-1">Storage (GiB)</label>
                           <input 
                             type="number"
                             name="disk" 
@@ -351,7 +363,7 @@ export default function AdminInstances() {
                           type="text"
                           placeholder="Type username or email..."
                           className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
-                          value={selectedUser ? `${selectedUser.username} (${selectedUser.email})` : userQuery}
+                          value={userQuery}
                           onChange={e => {
                             setUserQuery(e.target.value);
                             setSelectedUser(null);

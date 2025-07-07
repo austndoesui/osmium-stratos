@@ -103,29 +103,44 @@ router.post('/hosts/:id/verify', (req, res) => {
 // Create a VM or container on a host
 router.post('/hosts/:id/vms', (req, res) => {
   const { name, imageAlias, type, user_id, cpu, ram, disk } = req.body;
+  console.log('[Instance Creation] Received:', { name, imageAlias, type, user_id, cpu, ram, disk });
   if (!name || !imageAlias) {
     return res.status(400).json({ error: 'Instance name and image alias are required' });
   }
-  hosts.getHost(req.params.id, (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!host) return res.status(404).json({ error: 'Host not found' });
-    instance.createVM(host, { name, imageAlias, type, cpu, ram, disk }, (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      // Insert into instances table
-      db.run(
-        'INSERT INTO instances (name, host_id, lxd_name, user_id, cpu, ram, disk) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [name, host.id, name, user_id || null, cpu || null, ram || null, disk || null],
-        function (dbErr) {
-          if (dbErr) {
-            console.error('Failed to insert instance into DB:', dbErr);
-            // Still return LXD result, but warn about DB
-            return res.status(201).json({ ...result, dbWarning: 'Instance created in LXD but not saved in DB.' });
-          }
-          res.status(201).json({ ...result, instance_id: this.lastID });
-        }
-      );
+  // If user_id is provided, check if it exists
+  if (user_id) {
+    db.get('SELECT id FROM users WHERE id = ?', [user_id], (err, row) => {
+      if (err) return res.status(500).json({ error: 'Database error checking user_id' });
+      if (!row) return res.status(400).json({ error: 'Selected user does not exist' });
+      proceed();
     });
-  });
+  } else {
+    proceed();
+  }
+  function proceed() {
+    hosts.getHost(req.params.id, (err, host) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!host) return res.status(404).json({ error: 'Host not found' });
+      instance.createVM(host, { name, imageAlias, type, cpu, ram, disk }, (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        // Insert into instances table
+        const dbParams = [name, host.id, name, user_id || null, cpu || null, ram || null, disk || null];
+        console.log('[Instance Creation] DB Insert Params:', dbParams);
+        db.run(
+          'INSERT INTO instances (name, host_id, lxd_name, user_id, cpu, ram, disk) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          dbParams,
+          function (dbErr) {
+            if (dbErr) {
+              console.error('Failed to insert instance into DB:', dbErr);
+              // Still return LXD result, but warn about DB
+              return res.status(201).json({ ...result, dbWarning: 'Instance created in LXD but not saved in DB.' });
+            }
+            res.status(201).json({ ...result, instance_id: this.lastID });
+          }
+        );
+      });
+    });
+  }
 });
 
 // List available images from database
@@ -221,7 +236,14 @@ router.delete('/hosts/:id/vms/:name', (req, res) => {
     if (!host) return res.status(404).json({ error: 'Host not found' });
     instance.deleteInstance(host, req.params.name, (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
-      res.status(204).end();
+      // Also delete from the database
+      db.run('DELETE FROM instances WHERE host_id = ? AND name = ?', [host.id, req.params.name], function(dbErr) {
+        if (dbErr) {
+          console.error('Failed to delete instance from DB:', dbErr);
+          // Still return 204 since LXD deletion succeeded
+        }
+        res.status(204).end();
+      });
     });
   });
 });
@@ -324,6 +346,32 @@ router.delete('/users/:id', (req, res) => {
 // Logout endpoint (for JWT, just for frontend consistency)
 router.post('/logout', (req, res) => {
   res.json({ success: true });
+});
+
+// Get resource usage for a VM/container on a host
+router.get('/hosts/:id/vms/:name/usage', (req, res) => {
+  hosts.getHost(req.params.id, (err, host) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!host) return res.status(404).json({ error: 'Host not found' });
+    instance.getInstanceUsage(host, req.params.name, (err, usage) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.status(200).json(usage);
+    });
+  });
+});
+
+// Get instance config (cpu, ram, disk) from the database
+router.get('/hosts/:id/vms/:name/config', (req, res) => {
+  db.get(
+    'SELECT cpu, ram, disk FROM instances WHERE host_id = ? AND name = ?',
+    [req.params.id, req.params.name],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: 'Database error' });
+      if (!row) return res.status(404).json({ error: 'Instance not found' });
+      console.log('[Instance Config API] DB row:', row);
+      res.json(row);
+    }
+  );
 });
 
 module.exports = router;
