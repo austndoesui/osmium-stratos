@@ -30,9 +30,28 @@ export default function Account() {
     setErrorMessage('');
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setSuccessMessage('Profile updated successfully');
+      const token = localStorage.getItem('jwt');
+      const res = await fetch('/api/account/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          username: formData.username,
+          email: formData.email
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccessMessage('Profile updated successfully');
+        if (user) {
+          user.username = formData.username;
+          user.email = formData.email;
+        }
+      } else {
+        setErrorMessage(data.error || 'Failed to update profile.');
+      }
     } catch (error) {
       console.error('Error updating profile:', error);
       setErrorMessage('Failed to update profile. Please try again.');
@@ -43,26 +62,38 @@ export default function Account() {
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
-    
     if (formData.newPassword !== formData.confirmPassword) {
       setErrorMessage('New passwords do not match');
       return;
     }
-    
     setIsLoading(true);
     setSuccessMessage('');
     setErrorMessage('');
-
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setSuccessMessage('Password changed successfully');
-      setFormData(prev => ({
-        ...prev,
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      }));
+      const token = localStorage.getItem('jwt');
+      const res = await fetch('/api/account/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currentPassword: formData.currentPassword,
+          newPassword: formData.newPassword
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccessMessage('Password changed successfully');
+        setFormData(prev => ({
+          ...prev,
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        }));
+      } else {
+        setErrorMessage(data.error || 'Failed to change password.');
+      }
     } catch (error) {
       console.error('Error changing password:', error);
       setErrorMessage('Failed to change password. Please verify your current password.');

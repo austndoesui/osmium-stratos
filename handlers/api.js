@@ -8,6 +8,8 @@ const websocket = require('../modules/websocket');
 const { setupAuth } = require('../modules/auth');
 const db = require('./db');
 const { getAllUsers, deleteUserById } = require('./get-users');
+const bcrypt = require('bcrypt');
+const { updateProfile, changePassword } = require('../modules/account');
 
 const router = express.Router();
 
@@ -118,28 +120,28 @@ router.post('/hosts/:id/vms', (req, res) => {
     proceed();
   }
   function proceed() {
-    hosts.getHost(req.params.id, (err, host) => {
+  hosts.getHost(req.params.id, (err, host) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!host) return res.status(404).json({ error: 'Host not found' });
+    instance.createVM(host, { name, imageAlias, type, cpu, ram, disk }, (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
-      if (!host) return res.status(404).json({ error: 'Host not found' });
-      instance.createVM(host, { name, imageAlias, type, cpu, ram, disk }, (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        // Insert into instances table
+      // Insert into instances table
         const dbParams = [name, host.id, name, user_id || null, cpu || null, ram || null, disk || null];
         console.log('[Instance Creation] DB Insert Params:', dbParams);
-        db.run(
-          'INSERT INTO instances (name, host_id, lxd_name, user_id, cpu, ram, disk) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      db.run(
+        'INSERT INTO instances (name, host_id, lxd_name, user_id, cpu, ram, disk) VALUES (?, ?, ?, ?, ?, ?, ?)',
           dbParams,
-          function (dbErr) {
-            if (dbErr) {
-              console.error('Failed to insert instance into DB:', dbErr);
-              // Still return LXD result, but warn about DB
-              return res.status(201).json({ ...result, dbWarning: 'Instance created in LXD but not saved in DB.' });
-            }
-            res.status(201).json({ ...result, instance_id: this.lastID });
+        function (dbErr) {
+          if (dbErr) {
+            console.error('Failed to insert instance into DB:', dbErr);
+            // Still return LXD result, but warn about DB
+            return res.status(201).json({ ...result, dbWarning: 'Instance created in LXD but not saved in DB.' });
           }
-        );
-      });
+          res.status(201).json({ ...result, instance_id: this.lastID });
+        }
+      );
     });
+  });
   }
 });
 
@@ -242,7 +244,7 @@ router.delete('/hosts/:id/vms/:name', (req, res) => {
           console.error('Failed to delete instance from DB:', dbErr);
           // Still return 204 since LXD deletion succeeded
         }
-        res.status(204).end();
+      res.status(204).end();
       });
     });
   });
@@ -296,7 +298,6 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Username, email, and password are required.' });
   }
   try {
-    const bcrypt = require('bcrypt');
     const hash = password_hash || await bcrypt.hash(password, 10);
     const userRole = role && (role === 'admin' || role === 'user') ? role : 'user';
     db.run(
@@ -372,6 +373,38 @@ router.get('/hosts/:id/vms/:name/config', (req, res) => {
       res.json(row);
     }
   );
+});
+
+// Get instance count for a host
+router.get('/hosts/:id/instance-count', (req, res) => {
+  db.get('SELECT COUNT(*) as count FROM instances WHERE host_id = ?', [req.params.id], (err, row) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    res.json({ count: row ? row.count : 0 });
+  });
+});
+
+// Update profile info (username/email)
+router.post('/account/update', router.ensureAuthenticated, async (req, res) => {
+  const userId = req.user.id;
+  const { username, email } = req.body;
+  try {
+    await updateProfile(userId, username, email);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Unknown error.' });
+  }
+});
+
+// Change password
+router.post('/account/change-password', router.ensureAuthenticated, async (req, res) => {
+  const userId = req.user.id;
+  const { currentPassword, newPassword } = req.body;
+  try {
+    await changePassword(userId, currentPassword, newPassword);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Unknown error.' });
+  }
 });
 
 module.exports = router;

@@ -1,5 +1,7 @@
 # Osmium Configuration
 
+mode = "development" # or "production"
+
 [server]
 port = 3000
 

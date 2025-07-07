@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import MainLayout from '../../components/mainlayout';
+import { useNotification } from '../../providers/NotificationProvider';
 
 export default function AdminInstances() {
   const [instances, setInstances] = useState([]);
@@ -20,6 +21,7 @@ export default function AdminInstances() {
   const buttonRef = useRef(null);
   const navigate = useNavigate();
   const userSearchTimeout = useRef(null);
+  const { showSuccess, showError } = useNotification();
 
   useEffect(() => {
     fetchInstances();
@@ -118,7 +120,6 @@ export default function AdminInstances() {
   const handleSubmit = (e) => {
     e.preventDefault();
     setSubmitting(true);
-    setResult(null);
     setError(null);
     console.log('[Instance Creation] selectedUser:', selectedUser);
     fetch(`/api/hosts/${form.hostId}/vms`, {
@@ -137,16 +138,17 @@ export default function AdminInstances() {
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         if (!ok) throw new Error(data.error || 'Failed to create instance');
-        setResult('Instance creation started!');
+        showSuccess('Instance creation started!');
         setForm({ hostId: '', name: '', imageAlias: '', type: 'virtual-machine', cpu: '', ram: '', disk: '' });
         setSelectedUser(null);
         setUserQuery('');
-        setTimeout(() => {
-          setShowModal(false);
-          fetchInstances();
-        }, 2000);
+        setShowModal(false);
+        fetchInstances();
       })
-      .catch(err => setError(err.message))
+      .catch(err => {
+        showError(err.message);
+        setError(err.message);
+      })
       .finally(() => setSubmitting(false));
   };
 
@@ -159,6 +161,7 @@ export default function AdminInstances() {
     })
       .then(res => {
         if (!res.ok) throw new Error('Failed to delete instance');
+        showSuccess(`Instance '${name}' deleted successfully`);
         if (selectedUser && instances.find(i => i.name === name && i.host.id === hostId && i.owner && i.owner.username === selectedUser.username)) {
           setSelectedUser(null);
           setUserQuery('');
@@ -166,6 +169,7 @@ export default function AdminInstances() {
         fetchInstances();
       })
       .catch(err => {
+        showError(err.message);
         setError(err.message);
         setLoading(false);
       });
@@ -477,7 +481,7 @@ export default function AdminInstances() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="text-sm text-gray-300">{instance.host.name}</div>
-                        <div className="text-xs text-gray-400">{instance.host.address}</div>
+                        {/* <div className="text-xs text-gray-400">{instance.host.address}</div> */}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -514,9 +518,11 @@ export default function AdminInstances() {
                         >
                           View
                         </button>
-                        <button 
-                          className="text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                        <button
+                          className={`text-red-400 hover:text-red-300 transition-colors cursor-pointer ${instance.status === 'Running' ? 'opacity-50 cursor-not-allowed' : ''}`}
                           onClick={() => handleDelete(instance.host.id, instance.name)}
+                          disabled={instance.status === 'Running'}
+                          title={instance.status === 'Running' ? 'Cannot delete a running instance. Stop it first.' : ''}
                         >
                           Delete
                         </button>

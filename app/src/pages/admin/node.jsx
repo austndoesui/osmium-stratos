@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import MainLayout from '../../components/mainlayout';
+import { useNotification } from '../../providers/NotificationProvider';
 
 export default function AdminNode() {
   const [hosts, setHosts] = useState([]);
@@ -17,12 +18,13 @@ export default function AdminNode() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
-  const [formSuccess, setFormSuccess] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [statusMap, setStatusMap] = useState({});
   const [checkingStatuses, setCheckingStatuses] = useState(false);
+  const [instanceCounts, setInstanceCounts] = useState({});
   const modalRef = useRef(null);
   const buttonRef = useRef(null);
+  const { showSuccess, showError } = useNotification();
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -40,6 +42,28 @@ export default function AdminNode() {
     };
   }, [showModal]);
 
+  const fetchInstanceCounts = (hostsData) => {
+    if (!hostsData || hostsData.length === 0) return;
+    const counts = {};
+    let completed = 0;
+    hostsData.forEach(host => {
+      fetch(`/api/hosts/${host.id}/instance-count`)
+        .then(res => res.json())
+        .then(data => {
+          counts[host.id] = data.count;
+        })
+        .catch(() => {
+          counts[host.id] = 0;
+        })
+        .finally(() => {
+          completed++;
+          if (completed === hostsData.length) {
+            setInstanceCounts(counts);
+          }
+        });
+    });
+  };
+
   const fetchHosts = () => {
     setLoading(true);
     fetch('/api/hosts')
@@ -50,10 +74,11 @@ export default function AdminNode() {
       .then((data) => {
         setHosts(data);
         setError(null);
-        // Check status of all hosts after fetching
         checkAllHostStatuses(data);
+        fetchInstanceCounts(data);
       })
       .catch((err) => {
+        showError('Failed to fetch hosts: ' + err.message);
         setError(err.message);
       })
       .finally(() => setLoading(false));
@@ -81,9 +106,11 @@ export default function AdminNode() {
           newStatusMap[host.id] = 'Online';
         } else {
           newStatusMap[host.id] = 'Offline: ' + (data.error || 'Unknown error');
+          showError(`Host ${host.name} is offline: ${data.error || 'Unknown error'}`);
         }
       } catch (err) {
         newStatusMap[host.id] = 'Error: ' + err.message;
+        showError(`Failed to check host ${host.name}: ${err.message}`);
       }
       
       // Update status map after each host check
@@ -105,7 +132,6 @@ export default function AdminNode() {
     e.preventDefault();
     setSubmitting(true);
     setFormError(null);
-    setFormSuccess(null);
     
     fetch('/api/hosts', {
       method: 'POST',
@@ -117,15 +143,13 @@ export default function AdminNode() {
         return res.json();
       })
       .then(() => {
-        setFormSuccess('Host added successfully');
+        showSuccess('Host added successfully');
         setForm({ name: '', address: '', description: '', cert: '', key: '', ca: '' });
         fetchHosts();
-        setTimeout(() => {
-          setShowModal(false);
-          setFormSuccess(null);
-        }, 2000);
+        setShowModal(false);
       })
       .catch((err) => {
+        showError(err.message);
         setFormError(err.message);
       })
       .finally(() => setSubmitting(false));
@@ -134,12 +158,16 @@ export default function AdminNode() {
   const handleDelete = (id) => {
     if (!window.confirm('Are you sure you want to delete this host?')) return;
     setDeletingId(id);
+    const hostName = hosts.find(h => h.id === id)?.name || 'Unknown host';
+    
     fetch(`/api/hosts/${id}`, { method: 'DELETE' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to delete host');
+        showSuccess(`Host '${hostName}' deleted successfully`);
         fetchHosts();
       })
       .catch((err) => {
+        showError(`Failed to delete host '${hostName}': ${err.message}`);
         setError(err.message);
       })
       .finally(() => setDeletingId(null));
@@ -308,12 +336,6 @@ export default function AdminNode() {
                         </div>
                       )}
                       
-                      {formSuccess && (
-                        <div className="bg-green-900/40 border border-green-500/50 text-green-200 px-4 py-3 rounded-md">
-                          {formSuccess}
-                        </div>
-                      )}
-                      
                       <div className="flex justify-end space-x-3 pt-2">
                         <button
                           type="button"
@@ -408,9 +430,10 @@ export default function AdminNode() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                     <button
-                          className="text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                          className={`text-red-400 hover:text-red-300 transition-colors cursor-pointer ${deletingId === host.id || instanceCounts[host.id] > 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
                       onClick={() => handleDelete(host.id)}
-                      disabled={deletingId === host.id}
+                      disabled={deletingId === host.id || instanceCounts[host.id] > 0}
+                      title={instanceCounts[host.id] > 0 ? 'Cannot delete host with active instances' : ''}
                     >
                       {deletingId === host.id ? 'Deleting...' : 'Delete'}
                     </button>

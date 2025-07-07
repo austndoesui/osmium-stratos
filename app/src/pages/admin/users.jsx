@@ -1,13 +1,40 @@
 import MainLayout from '../../components/mainlayout';
 import { Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNotification } from '../../providers/NotificationProvider';
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ username: '', email: '', password: '', role: 'user' });
+  const [submitting, setSubmitting] = useState(false);
+  const modalRef = useRef(null);
+  const buttonRef = useRef(null);
+  const { showSuccess, showError } = useNotification();
 
   useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (modalRef.current && !modalRef.current.contains(event.target) && 
+          buttonRef.current && !buttonRef.current.contains(event.target)) {
+        setShowModal(false);
+      }
+    };
+
+    if (showModal) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showModal]);
+
+  const fetchUsers = () => {
     setLoading(true);
     fetch('/api/users')
       .then(res => {
@@ -25,7 +52,36 @@ export default function AdminUsers() {
         setError('Failed to load users. Please try again later.');
       })
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+
+    fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) throw new Error(data.error || 'Failed to create user');
+        showSuccess('User created successfully!');
+        setForm({ username: '', email: '', password: '', role: 'user' });
+        setShowModal(false);
+        fetchUsers();
+      })
+      .catch(err => {
+        showError(err.message);
+        setError(err.message);
+      })
+      .finally(() => setSubmitting(false));
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Never';
@@ -101,12 +157,118 @@ export default function AdminUsers() {
             <h1 className="text-2xl font-semibold text-white">User Management</h1>
             <p className="text-base text-gray-400">View and manage user accounts</p>
           </div>
-          <button className="bg-white hover:bg-gray-200 text-gray-900 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center cursor-pointer">
+          <button 
+            ref={buttonRef}
+            className="bg-white hover:bg-gray-200 text-gray-900 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center cursor-pointer"
+            onClick={() => setShowModal(!showModal)}
+          >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
             </svg>
             Add User
           </button>
+
+          {showModal && (
+            <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+              <div 
+                ref={modalRef}
+                className="bg-gray-800 rounded-lg shadow-xl w-96 border border-gray-700"
+                style={{ animation: 'fadeInDown 0.2s ease-out forwards' }}
+              >
+                <div className="flex justify-between items-center p-4 border-b border-gray-700">
+                  <h3 className="text-lg font-medium text-white">Create User</h3>
+                  <button 
+                    className="text-gray-400 hover:text-white cursor-pointer"
+                    onClick={() => setShowModal(false)}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="p-4">
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">Username</label>
+                      <input 
+                        type="text"
+                        name="username" 
+                        value={form.username} 
+                        onChange={handleChange} 
+                        required 
+                        className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
+                        placeholder="Enter username"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                      <input 
+                        type="email"
+                        name="email" 
+                        value={form.email} 
+                        onChange={handleChange} 
+                        required 
+                        className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
+                        placeholder="Enter email address"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
+                      <input 
+                        type="password"
+                        name="password" 
+                        value={form.password} 
+                        onChange={handleChange} 
+                        required 
+                        className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
+                        placeholder="Enter password"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">Role</label>
+                      <select 
+                        name="role" 
+                        value={form.role} 
+                        onChange={handleChange} 
+                        required 
+                        className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
+                      >
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+
+                    {error && (
+                      <div className="bg-red-900/40 border border-red-500/50 text-red-200 px-4 py-3 rounded-md">
+                        {error}
+                      </div>
+                    )}
+                    
+                    <div className="flex justify-end space-x-3 pt-2">
+                      <button
+                        type="button"
+                        className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer"
+                        onClick={() => setShowModal(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        className={`bg-white hover:bg-gray-200 text-gray-900 px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {submitting ? 'Creating...' : 'Create'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         
         <div className="bg-gray-800 rounded-lg shadow-md border border-gray-700 overflow-hidden">
@@ -197,6 +359,19 @@ export default function AdminUsers() {
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes fadeInDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </MainLayout>
   );
 }

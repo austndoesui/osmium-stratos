@@ -5,6 +5,7 @@ const db = require('./handlers/db');
 const router = require('./handlers/router');
 const http = require('http');
 const websocket = require('./modules/websocket');
+const moduleHandler = require('./handlers/module_handler');
 
 const app = express();
 const PORT = process.env.PORT || config.server.port || 3000;
@@ -28,6 +29,20 @@ app.use(express.static(path.join(__dirname, 'app', 'dist')));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'app', 'dist', 'index.html'));
 });
+
+// Debug log wrapper
+function debugLog(...args) {
+  if (config.mode !== 'production') {
+    console.log(...args);
+  }
+}
+function debugError(...args) {
+  if (config.mode !== 'production') {
+    console.error(...args);
+  }
+}
+
+debugLog('Loaded modules:', Object.keys(moduleHandler));
 
 const server = http.createServer(app);
 

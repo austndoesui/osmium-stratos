@@ -6,10 +6,34 @@ export default function MainLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pageLoading, setPageLoading] = useState(true);
   const { user, logout } = useContext(AuthContext);
   const location = useLocation();
   const navigate = useNavigate();
   const notificationRef = useRef(null);
+  const loadingTimeoutRef = useRef(null);
+
+  // Set initial loading state when route changes
+  useEffect(() => {
+    if (location.pathname === '/auth') return;
+    
+    setPageLoading(true);
+    // Clear any existing timeout
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current);
+    }
+    
+    // Set a minimum loading time to prevent flashing
+    loadingTimeoutRef.current = setTimeout(() => {
+      setPageLoading(false);
+    }, 500);
+
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, [location.pathname]);
 
   // Generate avatar URL using DiceBear API with thumbs style
   const generateAvatarUrl = (username) => {
@@ -358,12 +382,36 @@ export default function MainLayout({ children }) {
         </div>
 
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto bg-gray-900">
-          <div className="p-4 sm:p-6 lg:p-8">
-          {children}
+        <main className="flex-1 overflow-y-auto bg-gray-900 relative">
+          {pageLoading && location.pathname !== '/auth' && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50 z-10">
+              <div className="flex flex-col items-center">
+                <div className="h-12 w-12 relative">
+                  <div className="absolute inset-0 border-4 border-gray-700 rounded-full"></div>
+                  <div className="absolute inset-0 border-t-4 border-white rounded-full animate-spin"></div>
+                </div>
+                <p className="mt-4 text-sm text-gray-300">Loading...</p>
+              </div>
+            </div>
+          )}
+          <div className="p-4 sm:p-6 lg:p-8 min-h-[calc(100vh-4rem)] flex flex-col">
+            <div className="flex-grow">
+              {children}
+            </div>
+            
+            <div className="mt-10 text-center space-y-2">
+              <div className="text-sm text-gray-500 font-regular flex items-center justify-center">
+                <span>Powered by</span>
+                <img src="/favicon.webp" alt="Osmium Logo" className="w-5 h-5 mx-2" />
+                <span>Osmium</span>
+              </div>
+              <div className="text-xs text-gray-600">
+                © {new Date().getFullYear()} Carbon Labs. All rights reserved.
+              </div>
+            </div>
           </div>
           
-          {/* Instance navigation bar - only shown on instance pages and injected after instance name */}
+          {/* Instance navigation bar - only shown on instance pages */}
           {location.pathname.includes('/instance/') && (
             <div 
               id="instance-nav" 
@@ -420,6 +468,16 @@ export default function MainLayout({ children }) {
                   }`}
                 >
                   History
+                </Link>
+                <Link
+                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$/, '')}/destroy`}
+                  className={`whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm ${
+                    location.pathname.endsWith('/destroy') 
+                      ? 'border-white text-white' 
+                      : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+                  }`}
+                >
+                  Destroy
                 </Link>
               </nav>
             </div>

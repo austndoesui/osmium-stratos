@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import MainLayout from '../../components/mainlayout';
+import { useNotification } from '../../providers/NotificationProvider';
 
 export default function AdminImage() {
   const [showModal, setShowModal] = useState(false);
@@ -8,19 +9,16 @@ export default function AdminImage() {
   const [hosts, setHosts] = useState([]);
   const [hostId, setHostId] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addForm, setAddForm] = useState({ label: '', value: '' });
-  const [addError, setAddError] = useState(null);
   const [addSubmitting, setAddSubmitting] = useState(false);
-  const [addSuccess, setAddSuccess] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const modalRef = useRef(null);
   const buttonRef = useRef(null);
   const addModalRef = useRef(null);
   const addButtonRef = useRef(null);
+  const { showSuccess, showError } = useNotification();
 
   useEffect(() => {
     fetchImages();
@@ -52,10 +50,9 @@ export default function AdminImage() {
       .then(res => res.json())
       .then(data => {
         setImages(data);
-        setError(null);
       })
       .catch(err => {
-        setError('Failed to load images');
+        showError('Failed to load images');
         setImages([]);
       })
       .finally(() => setLoading(false));
@@ -66,24 +63,26 @@ export default function AdminImage() {
       fetch('/api/hosts')
         .then(res => res.json())
         .then(setHosts)
-        .catch(() => setHosts([]));
+        .catch(() => {
+          showError('Failed to load hosts');
+          setHosts([]);
+        });
     }
   }, [showModal]);
 
   const openModal = (image) => {
     setSelectedImage(image);
     setShowModal(true);
-    setResult(null);
-    setError(null);
     setHostId('');
   };
 
   const handleSave = (e) => {
     e.preventDefault();
-    if (!hostId) return setError('Please select a host');
+    if (!hostId) {
+      showError('Please select a host');
+      return;
+    }
     setSubmitting(true);
-    setResult(null);
-    setError(null);
     fetch(`/api/hosts/${hostId}/images`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -92,21 +91,18 @@ export default function AdminImage() {
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         if (!ok) throw new Error(data.error || 'Failed to save image');
-        setResult('Image saved to LXD!');
-        setTimeout(() => {
-          setShowModal(false);
-          setResult(null);
-        }, 2000);
+        showSuccess('Image saved to LXD successfully!');
+        setShowModal(false);
       })
-      .catch(err => setError(err.message))
+      .catch(err => {
+        showError(err.message);
+      })
       .finally(() => setSubmitting(false));
   };
 
   const handleAddImage = (e) => {
     e.preventDefault();
     setAddSubmitting(true);
-    setAddError(null);
-    setAddSuccess(null);
     fetch('/api/images', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -115,15 +111,14 @@ export default function AdminImage() {
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         if (!ok) throw new Error(data.error || 'Failed to add image');
+        showSuccess('Image added successfully');
         setAddForm({ label: '', value: '' });
-        setAddSuccess('Image added successfully');
         fetchImages();
-        setTimeout(() => {
-          setShowAddModal(false);
-          setAddSuccess(null);
-        }, 2000);
+        setShowAddModal(false);
       })
-      .catch(err => setAddError(err.message))
+      .catch(err => {
+        showError(err.message);
+      })
       .finally(() => setAddSubmitting(false));
   };
 
@@ -132,9 +127,12 @@ export default function AdminImage() {
     fetch(`/api/images/${id}`, { method: 'DELETE' })
       .then(res => {
         if (!res.ok) throw new Error('Failed to delete image');
+        showSuccess('Image deleted successfully');
         fetchImages();
       })
-      .catch(() => {});
+      .catch(err => {
+        showError(err.message);
+      });
   };
 
   return (
@@ -188,13 +186,11 @@ export default function AdminImage() {
             </button>
             
             {showAddModal && (
-              <div 
-                className="absolute right-0 top-full mt-2 z-50 w-96 origin-top-right"
-                style={{ animation: 'fadeInDown 0.2s ease-out forwards' }}
-              >
+              <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
                 <div 
                   ref={addModalRef}
-                  className="bg-gray-800 rounded-lg shadow-xl border border-gray-700 overflow-hidden"
+                  className="bg-gray-800 rounded-lg shadow-xl w-96 border border-gray-700"
+                  style={{ animation: 'fadeInDown 0.2s ease-out forwards' }}
                 >
                   <div className="flex justify-between items-center p-4 border-b border-gray-700">
                     <h3 className="text-lg font-medium text-white">Add Image</h3>
@@ -233,18 +229,6 @@ export default function AdminImage() {
                         <div className="text-xs text-gray-400 mt-1">Use format like ubuntu:22.04 or images:debian/12</div>
                       </div>
                       
-                      {addError && (
-                        <div className="bg-red-900/40 border border-red-500/50 text-red-200 px-4 py-3 rounded-md">
-                          {addError}
-                        </div>
-                      )}
-                      
-                      {addSuccess && (
-                        <div className="bg-green-900/40 border border-green-500/50 text-green-200 px-4 py-3 rounded-md">
-                          {addSuccess}
-                        </div>
-                      )}
-                      
                       <div className="flex justify-end space-x-3 pt-2">
                         <button
                           type="button"
@@ -268,12 +252,6 @@ export default function AdminImage() {
             )}
           </div>
         </div>
-        
-        {error && (
-          <div className="bg-red-900/40 border border-red-500/50 text-red-200 px-4 py-3 rounded-md mb-6">
-            {error}
-          </div>
-        )}
         
         <div className="bg-gray-800 rounded-lg shadow-md border border-gray-700">
           <div className="p-4 border-b border-gray-700">
@@ -369,18 +347,6 @@ export default function AdminImage() {
                                     {hosts.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
                                   </select>
                                 </div>
-                                
-                                {error && (
-                                  <div className="bg-red-900/40 border border-red-500/50 text-red-200 text-xs px-3 py-2 rounded-md">
-                                    {error}
-                                  </div>
-                                )}
-                                
-                                {result && (
-                                  <div className="bg-green-900/40 border border-green-500/50 text-green-200 text-xs px-3 py-2 rounded-md">
-                                    {result}
-                                  </div>
-                                )}
                                 
                                 <div className="flex justify-end space-x-2 pt-1">
                                   <button

@@ -57,14 +57,14 @@ export default function AdminOverview() {
         
         {/* Action buttons - updated to be fully colored with uncolored text */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <a href="#" className="bg-orange-500/20 hover:bg-orange-500/30 transition-colors rounded-md py-2 px-4 flex items-center justify-center shadow-sm">
+          <a href="https://discord.gg/jADngpHumj" target="_blank" rel="noopener noreferrer" className="bg-orange-500/20 hover:bg-orange-500/30 transition-colors rounded-md py-2 px-4 flex items-center justify-center shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-400 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
             </svg>
             <span className="text-orange-400 text-sm font-medium">Get help</span>
           </a>
           
-          <a href="https://github.com/ajnart/osmium" target="_blank" rel="noopener noreferrer" className="bg-purple-500/20 hover:bg-purple-500/30 transition-colors rounded-md py-2 px-4 flex items-center justify-center shadow-sm">
+          <a href="https://github.com/Carbon-FOSS" target="_blank" rel="noopener noreferrer" className="bg-purple-500/20 hover:bg-purple-500/30 transition-colors rounded-md py-2 px-4 flex items-center justify-center shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-400 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M10 0C4.477 0 0 4.477 0 10c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V19c0 .27.16.59.67.5C17.14 18.16 20 14.42 20 10A10 10 0 0010 0z" clipRule="evenodd" />
             </svg>
