@@ -504,4 +504,28 @@ router.delete('/hosts/:hostId/vms/:instanceName/redirects/:id', async (req, res)
   }
 });
 
+router.post('/hosts/:id/vms/:name/resize', (req, res) => {
+  const { cpu, ram, disk } = req.body;
+  hosts.getHost(req.params.id, (err, host) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!host) return res.status(404).json({ error: 'Host not found' });
+    instance.resizeInstance(host, req.params.name, { cpu, ram, disk }, (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+     
+      db.run(
+        'UPDATE instances SET cpu = ?, ram = ?, disk = ? WHERE host_id = ? AND name = ?',
+        [cpu || null, ram || null, disk || null, host.id, req.params.name],
+        function(dbErr) {
+          if (dbErr) {
+            console.error('Failed to update instance specs in DB:', dbErr);
+           
+            return res.status(200).json({ ...result, dbWarning: 'Specs updated in LXD but not saved in DB.' });
+          }
+          res.status(200).json({ ...result });
+        }
+      );
+    });
+  });
+});
+
 module.exports = router;
