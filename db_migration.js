@@ -21,11 +21,35 @@ function addColumnIfNotExists(table, column, type) {
   });
 }
 
+function createTableIfNotExists(table, schema) {
+  return new Promise((resolve, reject) => {
+    db.run(`CREATE TABLE IF NOT EXISTS ${table} (${schema})`, (err) => {
+      if (err) return reject(err);
+      console.log(`Ensured table ${table} exists`);
+      resolve();
+    });
+  });
+}
+
 (async () => {
   try {
     await addColumnIfNotExists('instances', 'cpu', 'INTEGER');
     await addColumnIfNotExists('instances', 'ram', 'INTEGER');
     await addColumnIfNotExists('instances', 'disk', 'INTEGER');
+    await addColumnIfNotExists('instances', 'image_alias', 'TEXT');
+    await createTableIfNotExists('port_forwards', `
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      instance_id INTEGER NOT NULL,
+      host_id INTEGER NOT NULL,
+      device_name TEXT NOT NULL,
+      host_ip TEXT NOT NULL,
+      host_port INTEGER NOT NULL,
+      container_port INTEGER NOT NULL,
+      protocol TEXT NOT NULL DEFAULT 'tcp',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (instance_id) REFERENCES instances(id),
+      FOREIGN KEY (host_id) REFERENCES host(id)
+    `);
     db.close();
     console.log('Migration complete.');
   } catch (err) {

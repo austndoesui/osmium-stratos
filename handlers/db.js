@@ -48,9 +48,24 @@ db.serialize(() => {
     cpu INTEGER,
     ram INTEGER,
     disk INTEGER,
+    image_alias TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (host_id) REFERENCES host(id),
     FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS port_forwards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    instance_id INTEGER NOT NULL,
+    host_id INTEGER NOT NULL,
+    device_name TEXT NOT NULL,
+    host_ip TEXT NOT NULL,
+    host_port INTEGER NOT NULL,
+    container_port INTEGER NOT NULL,
+    protocol TEXT NOT NULL DEFAULT 'tcp',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instance_id) REFERENCES instances(id),
+    FOREIGN KEY (host_id) REFERENCES host(id)
   )`);
 });
 

@@ -254,7 +254,15 @@ function listVMsOnHost(host, callback) {
       if (res.statusCode === 200) {
         try {
           const parsed = JSON.parse(data);
-          callback(null, parsed.metadata || []);
+          // Add image info to each instance
+          const instances = (parsed.metadata || []).map(vm => {
+            let image = null;
+            if (vm.config) {
+              image = vm.config['volatile.base_image'] || vm.config['image.alias'] || null;
+            }
+            return { ...vm, image };
+          });
+          callback(null, instances);
         } catch (e) {
           callback(new Error('Failed to parse LXD response'));
         }
@@ -466,6 +474,95 @@ function getInstanceUsage(host, name, callback) {
   req.end();
 }
 
+// Resize a VM or container on a given host
+function resizeInstance(host, name, { cpu, ram, disk }, callback) {
+  const url = new URL(host.address);
+  // Step 1: PATCH config for cpu/ram
+  const patchConfig = {};
+  if (cpu) patchConfig["limits.cpu"] = String(cpu);
+  if (ram) patchConfig["limits.memory"] = String(ram);
+  const patchData = JSON.stringify({ config: patchConfig });
+  const patchOptions = {
+    hostname: url.hostname,
+    port: url.port,
+    path: `/1.0/instances/${encodeURIComponent(name)}`,
+    method: 'PATCH',
+    cert: host.cert,
+    key: host.key,
+    ca: host.ca || undefined,
+    rejectUnauthorized: false,
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(patchData),
+    },
+    timeout: 20000,
+  };
+  const patchReq = https.request(patchOptions, (patchRes) => {
+    let patchResData = '';
+    patchRes.on('data', (chunk) => { patchResData += chunk; });
+    patchRes.on('end', () => {
+      if (patchRes.statusCode !== 200) {
+        return callback(new Error('Failed to set instance limits: ' + patchResData));
+      }
+      // Step 2: Update disk size if provided
+      if (disk) {
+        // PATCH the root disk device
+        const diskData = JSON.stringify({
+          devices: {
+            root: {
+              type: 'disk',
+              path: '/',
+              pool: 'default',
+              size: String(disk)
+            }
+          }
+        });
+        const diskOptions = {
+          hostname: url.hostname,
+          port: url.port,
+          path: `/1.0/instances/${encodeURIComponent(name)}`,
+          method: 'PATCH',
+          cert: host.cert,
+          key: host.key,
+          ca: host.ca || undefined,
+          rejectUnauthorized: false,
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(diskData),
+          },
+          timeout: 20000,
+        };
+        const diskReq = https.request(diskOptions, (diskRes) => {
+          let diskResData = '';
+          diskRes.on('data', (chunk) => { diskResData += chunk; });
+          diskRes.on('end', () => {
+            if (diskRes.statusCode !== 200) {
+              return callback(new Error('Failed to set disk size: ' + diskResData));
+            }
+            return callback(null, { success: true });
+          });
+        });
+        diskReq.on('error', (err) => callback(new Error('Error setting disk size: ' + err.message)));
+        diskReq.on('timeout', () => {
+          diskReq.destroy();
+          callback(new Error('Timeout setting disk size'));
+        });
+        diskReq.write(diskData);
+        diskReq.end();
+      } else {
+        return callback(null, { success: true });
+      }
+    });
+  });
+  patchReq.on('error', (err) => callback(new Error('Error setting instance limits: ' + err.message)));
+  patchReq.on('timeout', () => {
+    patchReq.destroy();
+    callback(new Error('Timeout setting instance limits'));
+  });
+  patchReq.write(patchData);
+  patchReq.end();
+}
+
 module.exports = {
   createVM,
   listVMsOnHost,
@@ -474,4 +571,5 @@ module.exports = {
   stopInstance,
   restartInstance,
   getInstanceUsage,
+  resizeInstance,
 };

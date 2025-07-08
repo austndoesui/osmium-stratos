@@ -9,6 +9,8 @@ function Instances() {
   const [flatInstances, setFlatInstances] = useState([]);
   const [loadingVMs, setLoadingVMs] = useState(true);
   const [error, setError] = useState(null);
+  const [instanceConfigs, setInstanceConfigs] = useState({});
+  const [loadingConfigs, setLoadingConfigs] = useState({});
   const [gridLayout, setGridLayout] = useState(() => {
     // Load saved layout preference from localStorage, default to 'full' if not found
     const savedLayout = localStorage.getItem('instancesGridLayout');
@@ -18,9 +20,30 @@ function Instances() {
   });
   const navigate = useNavigate();
   const { logout, user } = useContext(AuthContext);
+  const [images, setImages] = useState([]);
+
+  // Fetch instance configuration for a specific instance
+  const fetchInstanceConfig = async (hostId, instanceName) => {
+    setLoadingConfigs(prev => ({ ...prev, [`${hostId}-${instanceName}`]: true }));
+    try {
+      const res = await fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/config`);
+      if (res.ok) {
+        const data = await res.json();
+        setInstanceConfigs(prev => ({ ...prev, [`${hostId}-${instanceName}`]: data }));
+      }
+    } catch (error) {
+      console.error('Error fetching instance config:', error);
+    } finally {
+      setLoadingConfigs(prev => ({ ...prev, [`${hostId}-${instanceName}`]: false }));
+    }
+  };
 
   useEffect(() => {
     setLoadingVMs(true);
+    fetch('/api/images')
+      .then(res => res.json())
+      .then(setImages)
+      .catch(() => setImages([]));
     fetch('/api/vms')
       .then(res => res.json())
       .then(data => {
@@ -30,6 +53,8 @@ function Instances() {
           if (Array.isArray(vms)) {
             vms.forEach(vm => {
               allInstances.push({ ...vm, host });
+              // Fetch config for each instance
+              fetchInstanceConfig(host.id, vm.name);
             });
           }
         });
@@ -51,6 +76,25 @@ function Instances() {
     );
   });
 
+  // Helper to get image label from alias
+  const getImageLabel = (alias) => {
+    if (!alias) return '';
+    const found = images.find(img => img.value === alias);
+    return found ? found.label : alias;
+  };
+
+  // Helper to get host IP from host address
+  const getHostIp = (host) => {
+    if (host && host.address) {
+      try {
+        return new URL(host.address).hostname;
+      } catch {
+        return host.address;
+      }
+    }
+    return '';
+  };
+
   const instancesContent = (
     <>
       <div className="flex justify-between items-center mb-6">
@@ -59,7 +103,7 @@ function Instances() {
           {/* Layout toggle buttons */}
           <div className="flex bg-gray-800 rounded-md mr-2 border border-gray-700 relative group">
             <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-              {gridLayout === 'wide' ? 'Two cards per row' : 'Two card per row'}
+              {gridLayout === 'wide' ? 'Two cards per row' : 'One card per row'}
             </div>
             <button
               className={`p-2 ${gridLayout === 'wide' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'} rounded-l-md transition-colors`}
@@ -104,6 +148,8 @@ function Instances() {
                     if (Array.isArray(vms)) {
                       vms.forEach(vm => {
                         allInstances.push({ ...vm, host });
+                        // Refresh config for each instance
+                        fetchInstanceConfig(host.id, vm.name);
                       });
                     }
                   });
@@ -144,90 +190,121 @@ function Instances() {
         <div className={`grid grid-cols-1 gap-4 ${
           gridLayout === 'wide' ? 'md:grid-cols-2' : ''
         }`}>
-          {userInstances.map(vm => (
-            <div
-              key={vm.name + vm.host.id}
-              className={`bg-gray-800 rounded-lg border border-gray-700 cursor-pointer hover:bg-gray-750 transition ${
-                gridLayout === 'full' ? 'flex flex-row items-center p-5' : 'flex flex-col p-4'
-              }`}
-              onClick={() => navigate(`/instance/${vm.host.id}/${vm.name}`)}
-            >
-              {gridLayout === 'full' ? (
-                <>
-                  <div className="flex-grow">
-                    <div className="flex items-center">
-                      <div className="font-medium text-lg text-white mr-3">{vm.name}</div>
-                      <div className={`text-xs px-2 py-1 rounded-full ${
-                        vm.status === 'Running' ? 'bg-green-900/40 text-green-400' : 
-                        vm.status === 'Stopped' ? 'bg-red-900/40 text-red-400' : 
-                        'bg-yellow-900/40 text-yellow-400'
-                      }`}>
-                        {vm.status}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap mt-1 text-sm text-gray-400">
-                      <div className="flex items-center mr-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
-                        </svg>
-                        Host: {vm.host.name}
-                      </div>
-                      <div className="flex items-center mr-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                        </svg>
-                        Type: {vm.type === 'virtual-machine' ? 'VM' : 'Container'}
-                      </div>
-                      {vm.ipv4 && (
-                        <div className="flex items-center mr-4">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                          </svg>
-                          IP: {vm.ipv4}
+          {userInstances.map(vm => {
+            const configKey = `${vm.host.id}-${vm.name}`;
+            const config = instanceConfigs[configKey];
+            const isLoading = loadingConfigs[configKey];
+
+            return (
+              <div
+                key={vm.name + vm.host.id}
+                className={`relative bg-gray-800 rounded-lg border border-gray-700 cursor-pointer hover:bg-gray-750 transition overflow-hidden ${
+                  gridLayout === 'full' ? 'flex flex-row items-center' : 'flex flex-col'
+                }`}
+                onClick={() => navigate(`/instance/${vm.host.id}/${vm.name}`)}
+              >
+                <div className={`absolute left-0 top-0 bottom-0 w-1 ${
+                  vm.status === 'Running' ? 'bg-green-500' : 
+                  vm.status === 'Stopped' ? 'bg-red-500' : 
+                  'bg-yellow-500'
+                }`} />
+                <div className={gridLayout === 'full' ? 'p-5 pl-6 flex-grow' : 'p-4 pl-6'}>
+                  {gridLayout === 'full' ? (
+                    <>
+                      <div className="flex items-center mb-2">
+                        <div className="font-medium text-lg text-white mr-3">{vm.name}</div>
+                        <div className={`text-xs px-2 py-1 rounded-full ${
+                          vm.status === 'Running' ? 'bg-green-900/40 text-green-400 border border-green-700' : 
+                          vm.status === 'Stopped' ? 'bg-red-900/40 text-red-400 border border-red-700' : 
+                          'bg-yellow-900/40 text-yellow-400 border border-yellow-700'
+                        }`}>
+                          {vm.status}
                         </div>
-                      )}
-                      {vm.image && (
+                      </div>
+                      <div className="flex justify-between items-center text-sm text-gray-400">
+                        <div className="flex flex-wrap items-center">
+                          <span>{getHostIp(vm.host) || 'Unknown host IP'}</span>
+                          <span className="mx-1 text-gray-600">|</span>
+                          <span>{vm.host.name}</span>
+                          <span className="mx-2 text-gray-600">|</span>
+                          <span>{vm.type === 'virtual-machine' ? 'VM' : 'Container'}</span>
+                          {vm.image && (
+                            <>
+                              <span className="mx-2 text-gray-600">|</span>
+                              <span>{getImageLabel(vm.image)}</span>
+                            </>
+                          )}
+                        </div>
                         <div className="flex items-center">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          Image: {vm.image.split('/').pop()}
+                          {isLoading ? (
+                            <span>Loading specs...</span>
+                          ) : config ? (
+                            <>
+                              <span>{config.cpu ? `${config.cpu} vCPU` : 'Unknown CPU'}</span>
+                              <span className="mx-2 text-gray-600">|</span>
+                              <span>
+                                {config.ram ? `${(Number(config.ram) / 1073741824).toFixed(2)} GiB RAM` : 'Unknown RAM'}
+                              </span>
+                              <span className="mx-2 text-gray-600">|</span>
+                              <span>
+                                {config.disk ? `${(Number(config.disk) / 1073741824).toFixed(2)} GiB Disk` : 'Unknown Disk'}
+                              </span>
+                            </>
+                          ) : (
+                            <span>Specs not available</span>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="font-medium text-lg text-white">{vm.name}</div>
-                    <div className={`text-xs px-2 py-1 rounded-full ${
-                      vm.status === 'Running' ? 'bg-green-900/40 text-green-400' : 
-                      vm.status === 'Stopped' ? 'bg-red-900/40 text-red-400' : 
-                      'bg-yellow-900/40 text-yellow-400'
-                    }`}>
-                      {vm.status}
-                    </div>
-                  </div>
-                  
-                  <div className="text-sm text-gray-400 mt-1">
-                    <div className="flex items-center mb-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
-                      </svg>
-                      Host: {vm.host.name}
-                    </div>
-                    <div className="flex items-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                      </svg>
-                      Type: {vm.type === 'virtual-machine' ? 'VM' : 'Container'}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="font-medium text-lg text-white">{vm.name}</div>
+                        <div className={`text-xs px-2 py-1 rounded-full ${
+                          vm.status === 'Running' ? 'bg-green-900/40 text-green-400 border border-green-700' : 
+                          vm.status === 'Stopped' ? 'bg-red-900/40 text-red-400 border border-red-700' : 
+                          'bg-yellow-900/40 text-yellow-400 border border-yellow-700'
+                        }`}>
+                          {vm.status}
+                        </div>
+                      </div>
+                      
+                      <div className="text-sm text-gray-400">
+                        <div className="flex justify-between items-start">
+                          <div className="flex flex-wrap gap-2">
+                            <span>{getHostIp(vm.host) || 'Unknown host IP'}</span>
+                            <span className="text-gray-600">|</span>
+                            <span>{vm.host.name}</span>
+                            <span className="text-gray-600">|</span>
+                            <span>{vm.type === 'virtual-machine' ? 'VM' : 'Container'}</span>
+                            {vm.image && (
+                              <>
+                                <span className="text-gray-600">|</span>
+                                <span>{getImageLabel(vm.image)}</span>
+                              </>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            {isLoading ? (
+                              <span>Loading specs...</span>
+                            ) : config ? (
+                              <div className="space-y-1">
+                                <div>{config.cpu ? `${config.cpu} vCPU` : 'Unknown CPU'}</div>
+                                <div>{config.ram ? `${(Number(config.ram) / 1073741824).toFixed(2)} GiB RAM` : 'Unknown RAM'}</div>
+                                <div>{config.disk ? `${(Number(config.disk) / 1073741824).toFixed(2)} GiB Disk` : 'Unknown Disk'}</div>
+                              </div>
+                            ) : (
+                              <span>Specs not available</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </>

@@ -10,6 +10,7 @@ const db = require('./db');
 const { getAllUsers, deleteUserById } = require('./get-users');
 const bcrypt = require('bcrypt');
 const { updateProfile, changePassword } = require('../modules/account');
+const network = require('../modules/network');
 
 const router = express.Router();
 
@@ -126,10 +127,10 @@ router.post('/hosts/:id/vms', (req, res) => {
     instance.createVM(host, { name, imageAlias, type, cpu, ram, disk }, (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
       // Insert into instances table
-        const dbParams = [name, host.id, name, user_id || null, cpu || null, ram || null, disk || null];
+        const dbParams = [name, host.id, name, user_id || null, cpu || null, ram || null, disk || null, imageAlias];
         console.log('[Instance Creation] DB Insert Params:', dbParams);
       db.run(
-        'INSERT INTO instances (name, host_id, lxd_name, user_id, cpu, ram, disk) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO instances (name, host_id, lxd_name, user_id, cpu, ram, disk, image_alias) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
           dbParams,
         function (dbErr) {
           if (dbErr) {
@@ -204,7 +205,7 @@ router.get('/vms', (req, res) => {
           // Fetch instance ownership info from DB for this host
           const dbInstances = await new Promise((resolve) => {
             db.all(
-              `SELECT i.name, i.user_id, u.username, u.email FROM instances i LEFT JOIN users u ON i.user_id = u.id WHERE i.host_id = ?`,
+              `SELECT i.name, i.user_id, i.image_alias, u.username, u.email FROM instances i LEFT JOIN users u ON i.user_id = u.id WHERE i.host_id = ?`,
               [host.id],
               (dbErr, rows) => {
                 if (dbErr) resolve([]);
@@ -212,12 +213,13 @@ router.get('/vms', (req, res) => {
               }
             );
           });
-          // Merge owner info into each LXD instance
+          // Merge owner and image_alias info into each LXD instance
           const vmsWithOwner = Array.isArray(vms) ? vms.map(vm => {
             const dbInst = dbInstances.find(i => i.name === vm.name);
             return {
               ...vm,
               owner: dbInst && dbInst.user_id ? { username: dbInst.username, email: dbInst.email } : null,
+              image: dbInst && dbInst.image_alias ? dbInst.image_alias : vm.image,
             };
           }) : vms;
           results.push({ host: { id: host.id, name: host.name, address: host.address }, vms: vmsWithOwner });
@@ -404,6 +406,73 @@ router.post('/account/change-password', router.ensureAuthenticated, async (req, 
     res.json({ success: true });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message || 'Unknown error.' });
+  }
+});
+
+// Resize a VM or container on a host
+router.post('/hosts/:id/vms/:name/resize', (req, res) => {
+  const { cpu, ram, disk } = req.body;
+  hosts.getHost(req.params.id, (err, host) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!host) return res.status(404).json({ error: 'Host not found' });
+    instance.resizeInstance(host, req.params.name, { cpu, ram, disk }, (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      // Update the database with new specs
+      db.run(
+        'UPDATE instances SET cpu = ?, ram = ?, disk = ? WHERE host_id = ? AND name = ?',
+        [cpu || null, ram || null, disk || null, host.id, req.params.name],
+        function(dbErr) {
+          if (dbErr) {
+            console.error('Failed to update instance specs in DB:', dbErr);
+            // Still return success, but warn about DB
+            return res.status(200).json({ ...result, dbWarning: 'Specs updated in LXD but not saved in DB.' });
+          }
+          res.status(200).json({ ...result });
+        }
+      );
+    });
+  });
+});
+
+// List port forwards for an instance
+router.get('/hosts/:hostId/vms/:instanceName/redirects', (req, res) => {
+  network.listPortForwards(
+    { host_id: req.params.hostId, instance_name: req.params.instanceName },
+    (err, forwards) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(forwards);
+    }
+  );
+});
+
+// Add a port forward
+router.post('/hosts/:hostId/vms/:instanceName/redirects', async (req, res) => {
+  try {
+    const { container_port, protocol } = req.body;
+    if (!container_port) return res.status(400).json({ error: 'container_port is required' });
+    const result = await network.addPortForward({
+      host_id: req.params.hostId,
+      instance_name: req.params.instanceName,
+      container_port,
+      protocol: protocol || 'tcp',
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete a port forward
+router.delete('/hosts/:hostId/vms/:instanceName/redirects/:id', async (req, res) => {
+  try {
+    await network.removePortForward({
+      id: req.params.id,
+      host_id: req.params.hostId,
+      instance_name: req.params.instanceName,
+    });
+    res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

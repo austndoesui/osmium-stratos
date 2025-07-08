@@ -396,7 +396,7 @@ export default function MainLayout({ children }) {
           )}
           <div className="p-4 sm:p-6 lg:p-8 min-h-[calc(100vh-4rem)] flex flex-col">
             <div className="flex-grow">
-              {children}
+          {children}
             </div>
             
             <div className="mt-10 text-center space-y-2">
@@ -420,9 +420,9 @@ export default function MainLayout({ children }) {
             >
               <nav className="-mb-px flex space-x-6">
                 <Link
-                  to={location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$/, '')}
+                  to={location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/network$/, '')}
                   className={`whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm ${
-                    !location.pathname.match(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$/) 
+                    !location.pathname.match(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/network$/) 
                       ? 'border-white text-white' 
                       : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
                   }`}
@@ -430,7 +430,7 @@ export default function MainLayout({ children }) {
                   Overview
                 </Link>
                 <Link
-                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$/, '')}/metrics`}
+                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$|\/network$/, '')}/metrics`}
                   className={`whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm ${
                     location.pathname.endsWith('/metrics') 
                       ? 'border-white text-white' 
@@ -440,7 +440,7 @@ export default function MainLayout({ children }) {
                   Metrics
                 </Link>
                 <Link
-                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$/, '')}/console`}
+                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$|\/network$/, '')}/console`}
                   className={`whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm ${
                     location.pathname.endsWith('/console') 
                       ? 'border-white text-white' 
@@ -449,8 +449,9 @@ export default function MainLayout({ children }) {
                 >
                   Console
                 </Link>
+                {user && user.role === 'admin' && (
                 <Link
-                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$/, '')}/resize`}
+                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$|\/network$/, '')}/resize`}
                   className={`whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm ${
                     location.pathname.endsWith('/resize') 
                       ? 'border-white text-white' 
@@ -459,8 +460,19 @@ export default function MainLayout({ children }) {
                 >
                   Resize
                 </Link>
+                )}
                 <Link
-                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$/, '')}/history`}
+                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$|\/network$/, '')}/network`}
+                  className={`whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm ${
+                    location.pathname.endsWith('/network') 
+                      ? 'border-white text-white' 
+                      : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+                  }`}
+                >
+                  Network
+                </Link>
+                <Link
+                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$|\/network$/, '')}/history`}
                   className={`whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm ${
                     location.pathname.endsWith('/history') 
                       ? 'border-white text-white' 
@@ -470,7 +482,7 @@ export default function MainLayout({ children }) {
                   History
                 </Link>
                 <Link
-                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$/, '')}/destroy`}
+                  to={`${location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$|\/network$/, '')}/destroy`}
                   className={`whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm ${
                     location.pathname.endsWith('/destroy') 
                       ? 'border-white text-white' 

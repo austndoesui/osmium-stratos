@@ -13,9 +13,13 @@ import AdminInstances from './pages/admin/instances';
 import InstanceOverview from './pages/instance/overview';
 import Console from './pages/instance/console';
 import Metrics from './pages/instance/metrics';
+import Network from './pages/instance/network';
+import Destroy from './pages/instance/destroy';
+import Resize from './pages/instance/resize';
 import Auth from './pages/auth';
 import Instances from './pages/instances';
 import Account from './pages/account';
+import NotFound from './pages/errors/404';
 import { useEffect, useState, useContext } from 'react';
 import React, { createContext } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -99,6 +103,11 @@ function AppRoutes() {
       <Route path="/instance/:hostId/:instanceName" element={<RequireAuth><InstanceOverview /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/console" element={<RequireAuth><Console /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/metrics" element={<RequireAuth><Metrics /></RequireAuth>} />
+      <Route path="/instance/:hostId/:instanceName/network" element={<RequireAuth><Network /></RequireAuth>} />
+      <Route path="/instance/:hostId/:instanceName/destroy" element={<RequireAuth><Destroy /></RequireAuth>} />
+      <Route path="/instance/:hostId/:instanceName/resize" element={<RequireAdmin><Resize /></RequireAdmin>} />
+      {/* Catch-all route for 404 */}
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
