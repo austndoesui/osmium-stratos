@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useNotification } from '../providers/NotificationProvider';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export default function InstanceHeader({ 
   instanceName, 
@@ -16,6 +16,12 @@ export default function InstanceHeader({
   const [images, setImages] = useState([]);
   const [dbConfig, setDbConfig] = useState(null);
   const [loadingDbConfig, setLoadingDbConfig] = useState(true);
+  const [localInstanceInfo, setLocalInstanceInfo] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshTimerRef = useRef(null);
+  const refreshCountRef = useRef(0);
+  const maxRefreshAttempts = 10; // Maximum number of refresh attempts
+  const refreshInterval = 2000; // Refresh every 2 seconds
 
   // Get current page from URL
   const getCurrentPage = () => {
@@ -41,15 +47,94 @@ export default function InstanceHeader({
 
   // Helper to get host IP from instanceInfo
   const getHostIp = () => {
-    if (instanceInfo && instanceInfo.host && instanceInfo.host.address) {
+    const info = localInstanceInfo || instanceInfo;
+    if (info && info.host && info.host.address) {
       try {
-        return new URL(instanceInfo.host.address).hostname;
+        return new URL(info.host.address).hostname;
       } catch {
-        return instanceInfo.host.address;
+        return info.host.address;
       }
     }
     return '';
   };
+
+  // Function to fetch the latest instance status
+  const fetchInstanceStatus = () => {
+    if (refreshing && refreshCountRef.current < maxRefreshAttempts) {
+      setRefreshing(true);
+      fetch('/api/vms')
+        .then(res => res.json())
+        .then(data => {
+          // Find the current instance in the returned data
+          let found = null;
+          data.forEach(({ host, vms }) => {
+            if (Array.isArray(vms)) {
+              vms.forEach(vm => {
+                if (String(host.id) === String(hostId) && vm.name === instanceName) {
+                  found = { ...vm, host };
+                }
+              });
+            }
+          });
+          
+          if (found) {
+            setLocalInstanceInfo(found);
+            
+            // If status is what we expect after an action, stop refreshing
+            const expectedStatus = loading === 'start' ? 'running' : 
+                                  loading === 'stop' ? 'stopped' : 
+                                  loading === 'restart' ? 'running' : null;
+            
+            if (expectedStatus && normalizedStatus(found.status) === expectedStatus) {
+              setRefreshing(false);
+              refreshCountRef.current = 0;
+              if (refreshTimerRef.current) {
+                clearTimeout(refreshTimerRef.current);
+                refreshTimerRef.current = null;
+              }
+            } else {
+              // Continue refreshing
+              refreshCountRef.current += 1;
+              if (refreshCountRef.current < maxRefreshAttempts) {
+                refreshTimerRef.current = setTimeout(fetchInstanceStatus, refreshInterval);
+              } else {
+                setRefreshing(false);
+                refreshCountRef.current = 0;
+              }
+            }
+          }
+        })
+        .catch(err => {
+          console.error('Error fetching instance status:', err);
+          setRefreshing(false);
+          refreshCountRef.current = 0;
+        });
+    }
+  };
+
+  // Use effect to update localInstanceInfo when instanceInfo changes
+  useEffect(() => {
+    if (instanceInfo) {
+      setLocalInstanceInfo(instanceInfo);
+    }
+  }, [instanceInfo]);
+
+  // Start refreshing when a power action is initiated
+  useEffect(() => {
+    if (loading && (loading === 'start' || loading === 'stop' || loading === 'restart')) {
+      setRefreshing(true);
+      refreshCountRef.current = 0;
+      // Start the refresh cycle after a short delay
+      refreshTimerRef.current = setTimeout(fetchInstanceStatus, refreshInterval);
+    }
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+  }, [loading]);
 
   useEffect(() => {
     // Fetch images list
@@ -70,6 +155,14 @@ export default function InstanceHeader({
         setDbConfig(null);
         setLoadingDbConfig(false);
       });
+      
+    // Clean up on unmount
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
   }, [hostId, instanceName]);
 
   const getStatusColor = (status) => {
@@ -85,6 +178,16 @@ export default function InstanceHeader({
       onAction(action);
     }
   };
+
+  // Manual refresh button handler
+  const handleManualRefresh = () => {
+    setRefreshing(true);
+    refreshCountRef.current = 0;
+    fetchInstanceStatus();
+  };
+
+  // Use local instance info if available, otherwise fall back to the prop
+  const displayInstanceInfo = localInstanceInfo || instanceInfo;
 
   return (
     <>
@@ -134,14 +237,14 @@ export default function InstanceHeader({
         <div>
           <div className="flex items-center">
             <h1 className="text-2xl font-semibold text-white mr-3">{instanceName}</h1>
-            {loadingInfo ? (
+            {loadingInfo && !displayInstanceInfo ? (
               <div className="px-3 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-300 border border-gray-600 animate-pulse">
                 Loading...
               </div>
             ) : (
               <span
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors duration-200 ${getStatusColor(instanceInfo?.status)}`}
-                title={instanceInfo?.status || 'Unknown'}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors duration-200 ${getStatusColor(displayInstanceInfo?.status)}`}
+                title={displayInstanceInfo?.status || 'Unknown'}
               >
                 {loading ? (
                   <span className="flex items-center">
@@ -149,12 +252,12 @@ export default function InstanceHeader({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    {instanceInfo?.status === 'Running' && loading === 'stop' && 'Stopping...'}
-                    {instanceInfo?.status === 'Running' && loading === 'restart' && 'Restarting...'}
-                    {instanceInfo?.status === 'Stopped' && loading === 'start' && 'Starting...'}
+                    {displayInstanceInfo?.status === 'Running' && loading === 'stop' && 'Stopping...'}
+                    {displayInstanceInfo?.status === 'Running' && loading === 'restart' && 'Restarting...'}
+                    {displayInstanceInfo?.status === 'Stopped' && loading === 'start' && 'Starting...'}
                   </span>
                 ) : (
-                  instanceInfo?.status ? instanceInfo.status.charAt(0).toUpperCase() + instanceInfo.status.slice(1) : 'Unknown'
+                  displayInstanceInfo?.status ? displayInstanceInfo.status.charAt(0).toUpperCase() + displayInstanceInfo.status.slice(1) : 'Unknown'
                 )}
               </span>
             )}
@@ -162,7 +265,7 @@ export default function InstanceHeader({
           <div className="mt-2 text-sm text-gray-400 flex items-center">
             <span>{getHostIp() || 'Unknown host IP'}</span>
             <span className="mx-2 text-gray-600">|</span>
-            <span>{getImageLabel(instanceInfo?.image) || 'Unknown image'}</span>
+            <span>{getImageLabel(displayInstanceInfo?.image) || 'Unknown image'}</span>
             <span className="mx-2 text-gray-600">|</span>
             <span>
               {loadingDbConfig ? 'Loading...' :
@@ -188,8 +291,8 @@ export default function InstanceHeader({
         </div>
         <div className="flex space-x-3">
           <button
-            className={`flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${normalizedStatus(instanceInfo?.status) === 'running' ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}
-            disabled={loading || normalizedStatus(instanceInfo?.status) === 'running'}
+            className={`flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${normalizedStatus(displayInstanceInfo?.status) === 'running' ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+            disabled={loading || normalizedStatus(displayInstanceInfo?.status) === 'running'}
             onClick={() => handleAction('start')}
           >
             {loading === 'start' ? (
@@ -211,8 +314,8 @@ export default function InstanceHeader({
           </button>
           
           <button
-            className={`flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${normalizedStatus(instanceInfo?.status) !== 'running' ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white'}`}
-            disabled={loading || normalizedStatus(instanceInfo?.status) !== 'running'}
+            className={`flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${normalizedStatus(displayInstanceInfo?.status) !== 'running' ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+            disabled={loading || normalizedStatus(displayInstanceInfo?.status) !== 'running'}
             onClick={() => handleAction('stop')}
           >
             {loading === 'stop' ? (
@@ -234,8 +337,8 @@ export default function InstanceHeader({
           </button>
           
           <button
-            className={`flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${normalizedStatus(instanceInfo?.status) !== 'running' ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700 text-white'}`}
-            disabled={loading || normalizedStatus(instanceInfo?.status) !== 'running'}
+            className={`flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${normalizedStatus(displayInstanceInfo?.status) !== 'running' ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700 text-white'}`}
+            disabled={loading || normalizedStatus(displayInstanceInfo?.status) !== 'running'}
             onClick={() => handleAction('restart')}
           >
             {loading === 'restart' ? (

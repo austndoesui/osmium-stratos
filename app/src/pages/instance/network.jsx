@@ -280,31 +280,38 @@ export default function InstanceNetwork() {
                 Add Allocation
               </button>
             </div>
-            <div className="p-4">
-              {loadingRedirects ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-                </div>
-              ) : redirects.length > 0 ? (
+            
+            {loadingRedirects ? (
+              <div className="flex justify-center items-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+              </div>
+            ) : redirects.length > 0 ? (
+              <>
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-700">
-                    <thead>
+                  <table className="min-w-full">
+                    <thead className="bg-gray-700/50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Host Port</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Container Port</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Protocol</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Host Port</th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Container Port</th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Protocol</th>
+                        <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-700">
+                    <tbody className="divide-y divide-gray-700 bg-gray-800">
                       {redirects.map((redirect, index) => (
-                        <tr key={index}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{redirect.host_port}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{redirect.vm_port}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{redirect.protocol || 'tcp'}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <tr key={index} className="hover:bg-gray-700/30">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{redirect.host_port}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{redirect.vm_port}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              redirect.protocol === 'udp' ? 'bg-purple-900/30 text-purple-300' : 'bg-blue-900/30 text-blue-300'
+                            }`}>
+                              {redirect.protocol || 'tcp'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                             <button
-                              className="text-red-500 hover:text-red-400"
+                              className="text-red-400 hover:text-red-300 transition-colors"
                               onClick={() => handleDelete(redirect.id)}
                             >
                               Delete
@@ -315,12 +322,33 @@ export default function InstanceNetwork() {
                     </tbody>
                   </table>
                 </div>
-              ) : (
-                <div className="text-center py-8 text-gray-400">
-                  No allocations configured for this instance.
+                
+                {/* Pagination footer - now inside the same card */}
+                <div className="px-4 py-3 border-t border-gray-700 flex items-center justify-between">
+                  <div className="text-sm text-gray-400">
+                    Showing <span className="font-medium text-white">{redirects.length > 0 ? `1-${redirects.length}` : '0'}</span> of <span className="font-medium text-white">{redirects.length}</span> allocations
+                  </div>
+                  <div className="flex space-x-1">
+                    <button className="px-2 py-1 border border-gray-600 rounded-md text-gray-400 text-sm disabled:opacity-50" disabled>
+                      Previous
+                    </button>
+                    <button className="px-2 py-1 border border-gray-600 rounded-md text-gray-400 text-sm disabled:opacity-50" disabled>
+                      Next
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-gray-400">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-700/30 mb-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                  </svg>
+                </div>
+                <div className="text-gray-400 font-medium">No allocations found</div>
+                <p className="text-gray-500 text-sm mt-1">Add an allocation to get started</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

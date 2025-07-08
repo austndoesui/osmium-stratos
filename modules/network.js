@@ -99,41 +99,57 @@ function removePortForward({ id, host_id, instance_name }) {
   return new Promise((resolve, reject) => {
     db.get('SELECT * FROM port_forwards WHERE id = ?', [id], (err, pf) => {
       if (err || !pf) return reject(new Error('Port forward not found'));
-      hosts.getHost(host_id, (err, host) => {
-        if (err || !host) return reject(new Error('Host not found'));
-        const url = new URL(host.address);
-        // Remove device from LXD
-        const options = {
-          hostname: url.hostname,
-          port: url.port,
-          path: `/1.0/instances/${encodeURIComponent(instance_name)}/devices/${encodeURIComponent(pf.device_name)}`,
-          method: 'DELETE',
-          cert: host.cert,
-          key: host.key,
-          ca: host.ca || undefined,
-          rejectUnauthorized: false,
-          timeout: 20000,
-        };
-        const req = https.request(options, (res) => {
-          let data = '';
-          res.on('data', (chunk) => { data += chunk; });
-          res.on('end', () => {
-            if (res.statusCode === 202 || res.statusCode === 200 || res.statusCode === 204) {
-              db.run('DELETE FROM port_forwards WHERE id = ?', [id], (dbErr) => {
-                if (dbErr) return reject(dbErr);
-                resolve({ success: true });
-              });
-            } else {
-              reject(new Error('Failed to remove LXD proxy device: ' + data));
-            }
+      // Lookup the correct, case-sensitive instance name from the DB
+      db.get('SELECT name FROM instances WHERE id = ?', [pf.instance_id], (err, inst) => {
+        if (err || !inst) return reject(new Error('Instance not found for port forward'));
+        hosts.getHost(host_id, (err, host) => {
+          if (err || !host) return reject(new Error('Host not found'));
+          const url = new URL(host.address);
+          // Remove device from LXD using the correct instance name
+          const options = {
+            hostname: url.hostname,
+            port: url.port,
+            path: `/1.0/instances/${encodeURIComponent(inst.name)}/devices/${encodeURIComponent(pf.device_name)}`,
+            method: 'DELETE',
+            cert: host.cert,
+            key: host.key,
+            ca: host.ca || undefined,
+            rejectUnauthorized: false,
+            timeout: 20000,
+          };
+          const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+              console.log(`[removePortForward] LXD DELETE device response: status=${res.statusCode}, data=${data}`);
+              console.log(`[removePortForward] Instance: ${inst.name}, Device: ${pf.device_name}`);
+              if (
+                res.statusCode === 202 ||
+                res.statusCode === 200 ||
+                res.statusCode === 204 ||
+                res.statusCode === 404 // treat not found as success
+              ) {
+                db.run('DELETE FROM port_forwards WHERE id = ?', [id], (dbErr) => {
+                  if (dbErr) {
+                    console.error('[removePortForward] Failed to delete DB entry:', dbErr);
+                    return reject(dbErr);
+                  }
+                  console.log('[removePortForward] Port forward DB entry deleted:', id);
+                  resolve({ success: true });
+                });
+              } else {
+                console.error('[removePortForward] Failed to remove LXD proxy device:', data);
+                reject(new Error('Failed to remove LXD proxy device: ' + data));
+              }
+            });
           });
+          req.on('error', (err) => reject(err));
+          req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('LXD request timed out'));
+          });
+          req.end();
         });
-        req.on('error', (err) => reject(err));
-        req.on('timeout', () => {
-          req.destroy();
-          reject(new Error('LXD request timed out'));
-        });
-        req.end();
       });
     });
   });
