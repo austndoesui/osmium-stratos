@@ -22,16 +22,13 @@ export default function InstanceOverview() {
   const notification = useNotification();
 
   useEffect(() => {
-    // Set isMounted to true when component mounts
     isMounted.current = true;
     navMoved.current = false;
     
-    // Fetch host information
     fetch(`/api/hosts/${hostId}`)
       .then(res => res.json())
       .then(data => {
         if (isMounted.current && data && data.address) {
-          // Extract host/ip from address (strip protocol and port)
           try {
             const url = new URL(data.address);
             setHostAddress(url.hostname);
@@ -46,13 +43,11 @@ export default function InstanceOverview() {
         }
       });
       
-    // Fetch instance information using /api/vms (like in instances.jsx)
     setLoadingInfo(true);
     fetch('/api/vms')
       .then(res => res.json())
       .then(data => {
         if (isMounted.current) {
-        // Flatten all instances
         const allInstances = [];
         data.forEach(({ host, vms }) => {
           if (Array.isArray(vms)) {
@@ -61,7 +56,6 @@ export default function InstanceOverview() {
             });
           }
         });
-        // Find the instance by hostId and instanceName
         const found = allInstances.find(
           vm => String(vm.host.id) === String(hostId) && vm.name === instanceName
         );
@@ -76,7 +70,6 @@ export default function InstanceOverview() {
         }
       });
       
-    // Fetch resource usage for this instance
     setLoadingResource(true);
     fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/usage`)
       .then(res => res.ok ? res.json() : null)
@@ -92,7 +85,6 @@ export default function InstanceOverview() {
           setLoadingResource(false);
         }
       });
-    // Fetch instance config from DB
     setLoadingDbConfig(true);
     fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/config`)
       .then(res => res.ok ? res.json() : null)
@@ -109,13 +101,11 @@ export default function InstanceOverview() {
         }
       });
     
-    // Fetch images list
     fetch('/api/images')
       .then(res => res.json())
       .then(setImages)
       .catch(() => setImages([]));
       
-    // Move the navigation bar from mainlayout to below the instance name
     const moveNav = () => {
       if (!isMounted.current || navMoved.current) return;
       
@@ -124,14 +114,11 @@ export default function InstanceOverview() {
       const placeholder = navPlaceholderRef.current;
         
       if (nav && placeholder) {
-          // Create a clone of the navigation instead of moving the original
-          // This prevents DOM errors when React tries to manage the original element
           const navClone = nav.cloneNode(true);
           navClone.style.display = 'block';
           navClone.style.position = 'static';
           navClone.style.width = 'auto';
           
-          // Clear placeholder first to avoid appending multiple times
           while (placeholder.firstChild) {
             placeholder.removeChild(placeholder.firstChild);
           }
@@ -139,7 +126,6 @@ export default function InstanceOverview() {
           placeholder.appendChild(navClone);
           navMoved.current = true;
           
-          // Update the links in the cloned navigation
           const links = navClone.querySelectorAll('a');
           links.forEach(link => {
             link.addEventListener('click', (e) => {
@@ -153,13 +139,10 @@ export default function InstanceOverview() {
       }
     };
     
-    // Try moving the nav a few times with increasing delays
-    // This helps ensure the DOM is ready
     setTimeout(moveNav, 50);
     setTimeout(moveNav, 200);
     setTimeout(moveNav, 500);
     
-    // Cleanup function to set isMounted to false when component unmounts
     return () => {
       isMounted.current = false;
     };
@@ -191,7 +174,6 @@ export default function InstanceOverview() {
       });
   };
 
-  // Helper to get image label from alias
   const getImageLabel = (alias) => {
     if (!alias) return '';
     const found = images.find(img => img.value === alias);

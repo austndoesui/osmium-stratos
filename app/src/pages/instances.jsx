@@ -12,17 +12,14 @@ function Instances() {
   const [instanceConfigs, setInstanceConfigs] = useState({});
   const [loadingConfigs, setLoadingConfigs] = useState({});
   const [gridLayout, setGridLayout] = useState(() => {
-    // Load saved layout preference from localStorage, default to 'full' if not found
     const savedLayout = localStorage.getItem('instancesGridLayout');
-    // If the saved layout is 'default' (which is no longer used), convert it to 'wide'
     if (savedLayout === 'default') return 'wide';
-    return savedLayout || 'full'; // 'wide' (2 cards) or 'full' (1 card)
+    return savedLayout || 'full';
   });
   const navigate = useNavigate();
   const { logout, user } = useContext(AuthContext);
   const [images, setImages] = useState([]);
 
-  // Fetch instance configuration for a specific instance
   const fetchInstanceConfig = async (hostId, instanceName) => {
     setLoadingConfigs(prev => ({ ...prev, [`${hostId}-${instanceName}`]: true }));
     try {
@@ -53,7 +50,6 @@ function Instances() {
           if (Array.isArray(vms)) {
             vms.forEach(vm => {
               allInstances.push({ ...vm, host });
-              // Fetch config for each instance
               fetchInstanceConfig(host.id, vm.name);
             });
           }
@@ -67,7 +63,6 @@ function Instances() {
       .finally(() => setLoadingVMs(false));
   }, []);
 
-  // Filter instances to only those assigned to the current user
   const userInstances = flatInstances.filter(vm => {
     if (!vm.owner || !user) return false;
     return (
@@ -76,14 +71,12 @@ function Instances() {
     );
   });
 
-  // Helper to get image label from alias
   const getImageLabel = (alias) => {
     if (!alias) return '';
     const found = images.find(img => img.value === alias);
     return found ? found.label : alias;
   };
 
-  // Helper to get host IP from host address
   const getHostIp = (host) => {
     if (host && host.address) {
       try {
@@ -100,7 +93,6 @@ function Instances() {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-medium text-white">Your Instances</h2>
         <div className="flex space-x-3">
-          {/* Layout toggle buttons */}
           <div className="flex bg-gray-800 rounded-md mr-2 border border-gray-700 relative group">
             <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
               {gridLayout === 'wide' ? 'Two cards per row' : 'One card per row'}
@@ -148,7 +140,6 @@ function Instances() {
                     if (Array.isArray(vms)) {
                       vms.forEach(vm => {
                         allInstances.push({ ...vm, host });
-                        // Refresh config for each instance
                         fetchInstanceConfig(host.id, vm.name);
                       });
                     }

@@ -22,7 +22,6 @@ export default function Resize() {
   const navMoved = useRef(false);
   const { user } = useContext(AuthContext);
 
-  // Redirect non-admin users
   useEffect(() => {
     if (user && user.role !== 'admin') {
       navigate(`/instance/${hostId}/${instanceName}`);
@@ -33,7 +32,6 @@ export default function Resize() {
     isMounted.current = true;
     navMoved.current = false;
 
-    // Fetch instance information
     setLoadingInfo(true);
     fetch('/api/vms')
       .then(res => res.json())
@@ -61,7 +59,6 @@ export default function Resize() {
         }
       });
 
-    // Fetch instance config from DB
     setLoadingDbConfig(true);
     fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/config`)
       .then(res => res.ok ? res.json() : null)
@@ -83,7 +80,6 @@ export default function Resize() {
         }
       });
 
-    // Move navigation
     const moveNav = () => {
       if (!isMounted.current || navMoved.current) return;
       

@@ -15,7 +15,6 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 
-// Register ChartJS components
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -32,7 +31,7 @@ function Metrics() {
   const [instanceInfo, setInstanceInfo] = useState(null);
   const [loadingInfo, setLoadingInfo] = useState(true);
   const [loading, setLoading] = useState('');
-  const [usageHistory, setUsageHistory] = useState([]); // Array of { timestamp, cpu, memory, disk, network }
+  const [usageHistory, setUsageHistory] = useState([]);
   const [usageError, setUsageError] = useState(null);
   const navPlaceholderRef = useRef(null);
   const isMounted = useRef(true);
@@ -45,7 +44,6 @@ function Metrics() {
     setUsageHistory([]);
     setUsageError(null);
 
-    // Fetch instance information
     setLoadingInfo(true);
     fetch('/api/vms')
       .then(res => res.json())
@@ -73,7 +71,6 @@ function Metrics() {
         }
       });
 
-    // Move the navigation bar from mainlayout to below the instance name
     const moveNav = () => {
       if (!isMounted.current || navMoved.current) return;
       
@@ -116,7 +113,6 @@ function Metrics() {
     };
   }, [hostId, instanceName, navigate]);
 
-  // Poll resource usage every 5 seconds
   useEffect(() => {
     let interval;
     let stopped = false;
@@ -140,7 +136,6 @@ function Metrics() {
               network_rx: data.network && data.network.eth0 ? data.network.eth0.counters?.bytes_received : null,
               network_tx: data.network && data.network.eth0 ? data.network.eth0.counters?.bytes_sent : null,
             };
-            // Keep only last 10 entries
             const updated = [...prev, entry].slice(-10);
             return updated;
           });
@@ -180,7 +175,6 @@ function Metrics() {
         }
       })
       .catch(() => {
-        // Silently fail
       });
   };
 
@@ -218,12 +212,10 @@ function Metrics() {
       });
   };
 
-  // Chart data from usageHistory
   const timeLabels = usageHistory.map(entry => {
     const d = new Date(entry.timestamp);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   });
-  // CPU: LXD returns nanoseconds, so we can show % by diffing over time (approximate)
   let cpuPercents = [];
   if (usageHistory.length > 1) {
     for (let i = 1; i < usageHistory.length; ++i) {
@@ -231,19 +223,15 @@ function Metrics() {
       const curr = usageHistory[i];
       const deltaNs = curr.cpu - prev.cpu;
       const deltaMs = curr.timestamp - prev.timestamp;
-      // 1 core = 1e9 ns/sec, so % = (deltaNs / 1e9) / (deltaMs / 1000) * 100
       const percent = deltaMs > 0 ? ((deltaNs / 1e9) / (deltaMs / 1000)) * 100 : 0;
       cpuPercents.push(Math.max(0, Math.min(percent, 100)));
     }
-    cpuPercents = [0, ...cpuPercents]; // pad to match length
+    cpuPercents = [0, ...cpuPercents];
   } else {
     cpuPercents = usageHistory.map(() => 0);
   }
-  // Memory: show as MB
   const memoryMB = usageHistory.map(e => e.memory ? e.memory / 1048576 : 0);
-  // Disk: show as GB
   const diskGB = usageHistory.map(e => e.disk ? e.disk / 1073741824 : 0);
-  // Network: MB/s (diff over time)
   let rxMBs = [], txMBs = [];
   if (usageHistory.length > 1) {
     for (let i = 1; i < usageHistory.length; ++i) {
@@ -341,7 +329,6 @@ function Metrics() {
     ]
   };
 
-  // Helper to normalize status string
   const normalizedStatus = (status) => (status ? status.toLowerCase() : '');
 
   const getStatusColor = (status) => {
@@ -364,9 +351,7 @@ function Metrics() {
         navPlaceholderRef={navPlaceholderRef}
       />
       
-      {/* Main content */}
       <div className="grid grid-cols-1 gap-6">
-        {/* CPU Usage */}
         <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-md overflow-hidden">
           <div className="p-4 border-b border-gray-700 flex items-center justify-between">
             <h2 className="text-lg font-medium text-white">CPU Load</h2>
@@ -388,7 +373,6 @@ function Metrics() {
           </div>
         </div>
 
-        {/* Memory Usage */}
         <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-md overflow-hidden">
           <div className="p-4 border-b border-gray-700">
             <h2 className="text-lg font-medium text-white">Memory Usage (MB)</h2>
@@ -409,7 +393,6 @@ function Metrics() {
           </div>
         </div>
 
-        {/* Disk Usage */}
         <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-md overflow-hidden">
           <div className="p-4 border-b border-gray-700">
             <h2 className="text-lg font-medium text-white">Disk Usage (GB)</h2>
@@ -430,7 +413,6 @@ function Metrics() {
           </div>
         </div>
 
-        {/* Network Usage */}
         <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-md overflow-hidden">
           <div className="p-4 border-b border-gray-700">
             <h2 className="text-lg font-medium text-white">Network I/O (MB/s)</h2>

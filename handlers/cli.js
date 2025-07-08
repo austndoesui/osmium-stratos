@@ -9,7 +9,6 @@ function prompt(question) {
 }
 
 function isValidEmail(email) {
-  // Simple regex for email validation
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
 }
 

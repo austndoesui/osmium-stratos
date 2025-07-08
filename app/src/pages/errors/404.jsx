@@ -7,7 +7,6 @@ export default function NotFound() {
   return (
     <MainLayout>
       <div className="min-h-[80vh] flex flex-col items-center justify-center text-center px-4">
-        {/* 404 Warning Icon */}
         <svg 
           xmlns="http://www.w3.org/2000/svg" 
           fill="none" 
@@ -23,7 +22,6 @@ export default function NotFound() {
           />
         </svg>
 
-        {/* Error Message */}
         <h1 className="text-4xl font-bold text-white mb-4">
           404 - Page Not Found
         </h1>
@@ -32,7 +30,6 @@ export default function NotFound() {
           The page you're looking for doesn't exist or has been moved.
         </p>
 
-        {/* Action Buttons */}
         <div className="flex gap-4">
           <button
             onClick={() => navigate(-1)}
@@ -48,7 +45,6 @@ export default function NotFound() {
           </button>
         </div>
 
-        {/* Optional: Add some animated particles in the background */}
         <div className="absolute inset-0 -z-10 overflow-hidden">
           {[...Array(6)].map((_, i) => (
             <div
@@ -65,7 +61,6 @@ export default function NotFound() {
         </div>
       </div>
 
-      {/* Add floating animation */}
       <style jsx>{`
         @keyframes float {
           0% {

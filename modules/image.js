@@ -1,24 +1,20 @@
 const db = require('../handlers/db');
 const https = require('https');
 
-// Get the list of available images from the database
 function getImages(callback) {
   db.all('SELECT * FROM images', [], callback);
 }
 
-// Add a new image to the database
 function addImage({ label, value }, callback) {
   db.run('INSERT INTO images (label, value) VALUES (?, ?)', [label, value], function (err) {
     callback(err, { id: this?.lastID });
   });
 }
 
-// Delete an image from the database by id
 function deleteImage(id, callback) {
   db.run('DELETE FROM images WHERE id = ?', [id], callback);
 }
 
-// Parse an image alias into a source object for LXD API
 function parseImageSource(imageAlias) {
   if (imageAlias.startsWith('images:')) {
     return {
@@ -33,7 +29,6 @@ function parseImageSource(imageAlias) {
       protocol: 'simplestreams',
     };
   } else {
-    // Not a supported image alias
     return {
       server: '',
       alias: imageAlias,
@@ -42,8 +37,6 @@ function parseImageSource(imageAlias) {
   }
 }
 
-// Copy/import an image to a host by launching a minimal container
-// Note: The caller (hosts.js) is responsible for polling the LXD operation to completion.
 function copyImageToHost(host, imageAlias, callback) {
   const url = new URL(host.address);
   const containerName = `image-initialization-${Math.floor(Math.random() * 10000)}`;
@@ -85,7 +78,6 @@ function copyImageToHost(host, imageAlias, callback) {
     res.on('end', () => {
       if (res.statusCode === 202 || res.statusCode === 200) {
         const resp = JSON.parse(data);
-        // Operation polling is handled by the caller (hosts.js)
         callback(null, { name: containerName, resp });
       } else {
         callback(new Error('LXD API error: ' + data));

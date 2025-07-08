@@ -23,17 +23,14 @@ export default function InstanceNetwork() {
   const notification = useNotification();
 
   useEffect(() => {
-    // Set isMounted to true when component mounts
     isMounted.current = true;
     navMoved.current = false;
     
-    // Fetch instance information using /api/vms (like in other instance pages)
     setLoadingInfo(true);
     fetch('/api/vms')
       .then(res => res.json())
       .then(data => {
         if (isMounted.current) {
-        // Flatten all instances
         const allInstances = [];
         data.forEach(({ host, vms }) => {
           if (Array.isArray(vms)) {
@@ -42,7 +39,6 @@ export default function InstanceNetwork() {
             });
           }
         });
-        // Find the instance by hostId and instanceName
         const found = allInstances.find(
           vm => String(vm.host.id) === String(hostId) && vm.name === instanceName
         );
@@ -57,7 +53,6 @@ export default function InstanceNetwork() {
         }
       });
     
-    // Fetch network redirects for this instance
     setLoadingRedirects(true);
     fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/redirects`)
       .then(res => res.ok ? res.json() : [])
@@ -74,7 +69,6 @@ export default function InstanceNetwork() {
         }
       });
     
-    // Move the navigation bar from mainlayout to below the instance name
     const moveNav = () => {
       if (!isMounted.current || navMoved.current) return;
       
@@ -83,14 +77,11 @@ export default function InstanceNetwork() {
         const placeholder = navPlaceholderRef.current;
         
         if (nav && placeholder) {
-          // Create a clone of the navigation instead of moving the original
-          // This prevents DOM errors when React tries to manage the original element
           const navClone = nav.cloneNode(true);
           navClone.style.display = 'block';
           navClone.style.position = 'static';
           navClone.style.width = 'auto';
           
-          // Clear placeholder first to avoid appending multiple times
           while (placeholder.firstChild) {
             placeholder.removeChild(placeholder.firstChild);
           }
@@ -98,7 +89,6 @@ export default function InstanceNetwork() {
           placeholder.appendChild(navClone);
           navMoved.current = true;
           
-          // Update the links in the cloned navigation
           const links = navClone.querySelectorAll('a');
           links.forEach(link => {
             link.addEventListener('click', (e) => {
@@ -112,19 +102,15 @@ export default function InstanceNetwork() {
       }
     };
     
-    // Try moving the nav a few times with increasing delays
-    // This helps ensure the DOM is ready
     setTimeout(moveNav, 50);
     setTimeout(moveNav, 200);
     setTimeout(moveNav, 500);
     
-    // Cleanup function to set isMounted to false when component unmounts
     return () => {
       isMounted.current = false;
     };
   }, [hostId, instanceName, navigate]);
 
-  // Handle modal click outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (modalRef.current && !modalRef.current.contains(event.target) && 
@@ -185,7 +171,6 @@ export default function InstanceNetwork() {
         notification.showSuccess('Port forwarding added successfully!');
         setForm({ vm_port: '', protocol: 'tcp' });
         setShowModal(false);
-        // Refresh redirects list
         fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/redirects`)
           .then(res => res.ok ? res.json() : [])
           .then(data => {
@@ -262,9 +247,7 @@ export default function InstanceNetwork() {
         navPlaceholderRef={navPlaceholderRef}
       />
       
-      {/* Main content */}
       <div className="grid grid-cols-1 gap-6">
-        {/* Network Redirects section */}
         <div>
           <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-md overflow-hidden">
             <div className="p-4 border-b border-gray-700 flex justify-between items-center">
@@ -323,7 +306,6 @@ export default function InstanceNetwork() {
                   </table>
                 </div>
                 
-                {/* Pagination footer - now inside the same card */}
                 <div className="px-4 py-3 border-t border-gray-700 flex items-center justify-between">
                   <div className="text-sm text-gray-400">
                     Showing <span className="font-medium text-white">{redirects.length > 0 ? `1-${redirects.length}` : '0'}</span> of <span className="font-medium text-white">{redirects.length}</span> allocations
@@ -353,7 +335,6 @@ export default function InstanceNetwork() {
         </div>
       </div>
 
-      {/* Add Port Forwarding Modal */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
           <div 

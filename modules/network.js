@@ -2,16 +2,13 @@ const db = require('../handlers/db');
 const hosts = require('./hosts');
 const https = require('https');
 
-// Find a random free port in a range (checks DB for conflicts)
 function findFreePort(host_id, start = 20000, end = 30000) {
   return new Promise((resolve, reject) => {
-    // Get all used host ports for this host from DB
     db.all('SELECT host_port FROM port_forwards WHERE host_id = ?', [host_id], (err, rows) => {
       if (err) return reject(err);
       const used = new Set(rows.map(r => r.host_port));
       const range = [];
       for (let p = start; p <= end; ++p) range.push(p);
-      // Shuffle range
       for (let i = range.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [range[i], range[j]] = [range[j], range[i]];
@@ -24,19 +21,16 @@ function findFreePort(host_id, start = 20000, end = 30000) {
   });
 }
 
-// Add a port forward (LXD proxy device + DB)
 async function addPortForward({ host_id, instance_name, container_port, protocol = 'tcp' }) {
   return new Promise((resolve, reject) => {
     hosts.getHost(host_id, (err, host) => {
       if (err || !host) return reject(new Error('Host not found'));
-      // Find instance_id in DB
       db.get('SELECT id FROM instances WHERE name = ? AND host_id = ?', [instance_name, host_id], async (err, inst) => {
         if (err || !inst) return reject(new Error('Instance not found'));
         try {
           const host_ip = new URL(host.address).hostname;
           const host_port = await findFreePort(host_id);
           const device_name = `proxy-${container_port}-${host_port}`;
-          // Add LXD proxy device
           const url = new URL(host.address);
           const deviceConfig = {
             [device_name]: {
@@ -66,7 +60,6 @@ async function addPortForward({ host_id, instance_name, container_port, protocol
             res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => {
               if (res.statusCode === 202 || res.statusCode === 200) {
-                // Insert into DB
                 db.run(`INSERT INTO port_forwards (instance_id, host_id, device_name, host_ip, host_port, container_port, protocol) VALUES (?, ?, ?, ?, ?, ?, ?)`,
                   [inst.id, host_id, device_name, host_ip, host_port, container_port, protocol],
                   function (dbErr) {
@@ -94,18 +87,15 @@ async function addPortForward({ host_id, instance_name, container_port, protocol
   });
 }
 
-// Remove a port forward (LXD proxy device + DB)
 function removePortForward({ id, host_id, instance_name }) {
   return new Promise((resolve, reject) => {
     db.get('SELECT * FROM port_forwards WHERE id = ?', [id], (err, pf) => {
       if (err || !pf) return reject(new Error('Port forward not found'));
-      // Lookup the correct, case-sensitive instance name from the DB
       db.get('SELECT name FROM instances WHERE id = ?', [pf.instance_id], (err, inst) => {
         if (err || !inst) return reject(new Error('Instance not found for port forward'));
         hosts.getHost(host_id, (err, host) => {
           if (err || !host) return reject(new Error('Host not found'));
           const url = new URL(host.address);
-          // Remove device from LXD using the correct instance name
           const options = {
             hostname: url.hostname,
             port: url.port,
@@ -121,20 +111,17 @@ function removePortForward({ id, host_id, instance_name }) {
             let data = '';
             res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => {
-              console.log(`[removePortForward] LXD DELETE device response: status=${res.statusCode}, data=${data}`);
-              console.log(`[removePortForward] Instance: ${inst.name}, Device: ${pf.device_name}`);
               if (
                 res.statusCode === 202 ||
                 res.statusCode === 200 ||
                 res.statusCode === 204 ||
-                res.statusCode === 404 // treat not found as success
+                res.statusCode === 404
               ) {
                 db.run('DELETE FROM port_forwards WHERE id = ?', [id], (dbErr) => {
                   if (dbErr) {
                     console.error('[removePortForward] Failed to delete DB entry:', dbErr);
                     return reject(dbErr);
                   }
-                  console.log('[removePortForward] Port forward DB entry deleted:', id);
                   resolve({ success: true });
                 });
               } else {
@@ -155,7 +142,6 @@ function removePortForward({ id, host_id, instance_name }) {
   });
 }
 
-// List all port forwards for an instance
 function listPortForwards({ host_id, instance_name }, callback) {
   db.get('SELECT id FROM instances WHERE name = ? AND host_id = ?', [instance_name, host_id], (err, inst) => {
     if (err || !inst) return callback(err || new Error('Instance not found'));

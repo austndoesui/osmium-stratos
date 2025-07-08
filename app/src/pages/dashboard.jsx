@@ -18,7 +18,6 @@ function Dashboard() {
     fetch('/api/vms')
       .then(res => res.json())
       .then(data => {
-        // Flatten all instances
         const allInstances = [];
         data.forEach(({ host, vms }) => {
           if (Array.isArray(vms)) {
@@ -27,7 +26,6 @@ function Dashboard() {
             });
           }
         });
-        // Filter to only current user's instances
         const userInstances = allInstances.filter(vm => {
           if (!vm.owner || !user) return false;
           return (
@@ -35,7 +33,6 @@ function Dashboard() {
             (vm.owner.email && vm.owner.email === user.email)
           );
         });
-        // Calculate stats for user's instances
         let totalInstances = userInstances.length;
         let runningInstances = userInstances.filter(vm => vm.status === 'Running').length;
         let stoppedInstances = userInstances.filter(vm => vm.status === 'Stopped').length;

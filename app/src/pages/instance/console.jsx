@@ -4,7 +4,6 @@ import MainLayout from '../../components/mainlayout';
 import { Link } from 'react-router-dom';
 import { useNotification } from '../../providers/NotificationProvider';
 import InstanceHeader from '../../components/instance_header';
-// Import xterm.js and CSS
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
@@ -31,12 +30,10 @@ export default function Console() {
   const notification = useNotification();
 
   useEffect(() => {
-    // Fetch instance information
     setLoadingInfo(true);
     fetch('/api/vms')
       .then(res => res.json())
       .then(data => {
-        // Flatten all instances
         const allInstances = [];
         data.forEach(({ host, vms }) => {
           if (Array.isArray(vms)) {
@@ -45,7 +42,6 @@ export default function Console() {
             });
           }
         });
-        // Find the instance by hostId and instanceName
         const found = allInstances.find(
           vm => String(vm.host.id) === String(hostId) && vm.name === instanceName
         );
@@ -58,7 +54,6 @@ export default function Console() {
         setLoadingInfo(false);
       });
 
-    // Move the navigation bar from mainlayout to below the instance name
     setTimeout(() => {
       const nav = document.getElementById('instance-nav');
       const placeholder = navPlaceholderRef.current;
@@ -70,13 +65,12 @@ export default function Console() {
       }
     }, 10);
 
-    // Create terminal
     const term = new Terminal({
       cursorBlink: true,
       fontSize: fontSize,
       fontFamily: '"JetBrains Mono", monospace',
       theme: { 
-        background: 'rgb(31 41 55)', // Changed from #0f172a to match bg-gray-800
+        background: 'rgb(31 41 55)',
         foreground: '#f8f8f2',
         cursor: '#f8f8f2',
         selection: 'rgba(255, 255, 255, 0.3)',
@@ -103,43 +97,34 @@ export default function Console() {
     
     terminalRef.current = term;
     
-    // Create fit addon to make terminal responsive
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
     
-    // Set loading state explicitly
     setIsLoading(true);
     setLoadingProgress(0);
     
-    // Animate the progress bar over 3 seconds
     progressIntervalRef.current = setInterval(() => {
       setLoadingProgress(prev => {
-        // Increase progress by 2% each interval
         const newProgress = prev + 2;
-        // Cap at 95% until connection is actually established
         return Math.min(newProgress, 95);
       });
-    }, 60); // 60ms interval gives 50 steps over 3 seconds
+    }, 60);
     
-    // Set a minimum loading time of 3 seconds
     loadingTimerRef.current = setTimeout(() => {
-      // Clear the progress animation
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
       }
       
-      // Set progress to 100% and hide the loading overlay
       setLoadingProgress(100);
       setTimeout(() => {
         setIsLoading(false);
-      }, 200); // Short delay to show 100% before hiding
+      }, 200);
     }, 3000);
     
     term.open(termRef.current);
     
-    // Try to fit the terminal to the container
     try {
       fitAddon.fit();
     } catch (e) {
@@ -148,7 +133,6 @@ export default function Console() {
     
     term.focus();
 
-    // Connect to backend WebSocket
     const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl = `${wsProto}://${window.location.host}/ws/console/${hostId}/${encodeURIComponent(instanceName)}`;
     const ws = new window.WebSocket(wsUrl);
@@ -160,12 +144,8 @@ export default function Console() {
       console.log("WebSocket connection opened");
       setConnectionStatus('connected');
       
-      // Update progress to at least 80% when connection is established
       setLoadingProgress(prev => Math.max(prev, 80));
       
-      // Don't immediately hide the loading overlay
-      // Instead, let the timer handle it after 3 seconds
-      // Don't write any connection message to the terminal
     };
     
     ws.onmessage = (event) => {
@@ -180,13 +160,11 @@ export default function Console() {
       console.log("WebSocket connection closed");
       setConnectionStatus('disconnected');
       
-      // Clear the loading timer if it's still running
       if (loadingTimerRef.current) {
         clearTimeout(loadingTimerRef.current);
         loadingTimerRef.current = null;
       }
       
-      // Clear the progress animation
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
@@ -200,13 +178,11 @@ export default function Console() {
       console.log("WebSocket error occurred", e);
       setConnectionStatus('error');
       
-      // Clear the loading timer if it's still running
       if (loadingTimerRef.current) {
         clearTimeout(loadingTimerRef.current);
         loadingTimerRef.current = null;
       }
       
-      // Clear the progress animation
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
@@ -218,14 +194,12 @@ export default function Console() {
       console.error('WebSocket error:', e);
     };
 
-    // Send terminal input to backend
     term.onData(data => {
       if (ws.readyState === ws.OPEN) {
         ws.send(data);
       }
     });
 
-    // Handle window resize
     const handleResize = () => {
       if (fitAddonRef.current) {
         try {
@@ -238,10 +212,8 @@ export default function Console() {
 
     window.addEventListener('resize', handleResize);
     
-    // Initial fit after a short delay to ensure container is properly sized
     setTimeout(handleResize, 100);
 
-    // Handle fullscreen change
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
         setIsFullscreen(false);
@@ -250,18 +222,15 @@ export default function Console() {
     
     document.addEventListener('fullscreenchange', handleFullscreenChange);
 
-    // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       
-      // Clear the loading timer if it's still running
       if (loadingTimerRef.current) {
         clearTimeout(loadingTimerRef.current);
         loadingTimerRef.current = null;
       }
       
-      // Clear the progress animation
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
@@ -274,7 +243,6 @@ export default function Console() {
     };
   }, [hostId, instanceName, fontSize]);
 
-  // Toggle fullscreen mode
   const toggleFullscreen = () => {
     if (!isFullscreen) {
       if (terminalContainerRef.current.requestFullscreen) {
@@ -301,36 +269,30 @@ export default function Console() {
     }
   };
 
-  // Send common terminal commands
   const sendCommand = (command) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(command);
     }
   };
 
-  // Increase font size
   const increaseFontSize = () => {
     setFontSize(prev => Math.min(prev + 2, 24));
   };
 
-  // Decrease font size
   const decreaseFontSize = () => {
     setFontSize(prev => Math.max(prev - 2, 10));
   };
 
-  // Clear terminal (sends clear command)
   const clearTerminal = () => {
-    sendCommand('\u000C'); // Form feed character (clear)
+    sendCommand('\u000C');
   };
 
-  // Force reconnect
   const reconnect = () => {
     if (wsRef.current) {
       wsRef.current.close();
       setIsLoading(true);
       setLoadingProgress(0);
       
-      // Animate the progress bar for reconnection
       progressIntervalRef.current = setInterval(() => {
         setLoadingProgress(prev => {
           const newProgress = prev + 2;
@@ -338,22 +300,18 @@ export default function Console() {
         });
       }, 60);
       
-      // Set a minimum loading time of 3 seconds for reconnection
       loadingTimerRef.current = setTimeout(() => {
-        // Clear the progress animation
         if (progressIntervalRef.current) {
           clearInterval(progressIntervalRef.current);
           progressIntervalRef.current = null;
         }
         
-        // Set progress to 100% and hide the loading overlay
         setLoadingProgress(100);
         setTimeout(() => {
           setIsLoading(false);
         }, 200);
       }, 3000);
       
-      // Reconnect after a short delay
       setTimeout(() => {
         const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const wsUrl = `${wsProto}://${window.location.host}/ws/console/${hostId}/${encodeURIComponent(instanceName)}`;
@@ -365,8 +323,6 @@ export default function Console() {
         ws.onopen = () => {
           setConnectionStatus('connected');
           setLoadingProgress(prev => Math.max(prev, 80));
-          // Let the timer handle hiding the loading overlay
-          // Don't write any reconnection message
         };
         
         ws.onmessage = (event) => {
@@ -382,13 +338,11 @@ export default function Console() {
         ws.onclose = () => {
           setConnectionStatus('disconnected');
           
-          // Clear the loading timer if it's still running
           if (loadingTimerRef.current) {
             clearTimeout(loadingTimerRef.current);
             loadingTimerRef.current = null;
           }
           
-          // Clear the progress animation
           if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);
             progressIntervalRef.current = null;
@@ -403,13 +357,11 @@ export default function Console() {
         ws.onerror = (e) => {
           setConnectionStatus('error');
           
-          // Clear the loading timer if it's still running
           if (loadingTimerRef.current) {
             clearTimeout(loadingTimerRef.current);
             loadingTimerRef.current = null;
           }
           
-          // Clear the progress animation
           if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);
             progressIntervalRef.current = null;
@@ -443,7 +395,6 @@ export default function Console() {
       .then(() => {
         notification.showSuccess(`${action.charAt(0).toUpperCase() + action.slice(1)} command sent!`);
         
-        // Refresh instance info after a successful action
         setTimeout(() => {
           fetch('/api/vms')
             .then(res => res.json())
@@ -471,7 +422,6 @@ export default function Console() {
       });
   };
 
-  // Helper to normalize status string
   const normalizedStatus = (status) => (status ? status.toLowerCase() : '');
 
   const getStatusColor = (status) => {
@@ -494,9 +444,7 @@ export default function Console() {
         navPlaceholderRef={navPlaceholderRef}
       />
       
-      {/* Terminal container */}
       <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-md overflow-hidden">
-        {/* Terminal toolbar */}
         <div className="p-2 border-b border-gray-700 bg-gray-800 flex flex-wrap items-center justify-between">
           <div className="flex items-center">
             <h2 className="text-lg font-medium text-white mr-4">Console</h2>
@@ -560,7 +508,6 @@ export default function Console() {
           </div>
         </div>
         
-        {/* Terminal with loading overlay */}
         <div 
           ref={terminalContainerRef} 
           className={`relative bg-gray-800 p-2 w-full ${isFullscreen ? 'fullscreen-terminal' : ''}`}
@@ -568,7 +515,6 @@ export default function Console() {
         >
           <div ref={termRef} className="h-full w-full" />
           
-          {/* Loading overlay - positioned absolutely over the terminal */}
           {isLoading && (
             <div 
               className="absolute top-0 left-0 right-0 bottom-0 bg-gray-800 bg-opacity-95 flex flex-col items-center justify-center"
@@ -591,7 +537,6 @@ export default function Console() {
         </div>
       </div>
       
-      {/* Connection error message */}
       {error && (
         <div className="mt-4 bg-red-900/40 border border-red-500/50 text-red-200 px-4 py-3 rounded-md">
           <div className="flex">

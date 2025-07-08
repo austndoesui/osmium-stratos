@@ -19,7 +19,7 @@ export default function Notification({ message, type = NotificationTypes.INFO, d
       setTimeout(() => {
         setVisible(false);
         if (onClose) onClose();
-      }, 300); // Wait for exit animation to complete
+      }, 300);
     }, duration);
 
     return () => clearTimeout(timer);
@@ -27,7 +27,6 @@ export default function Notification({ message, type = NotificationTypes.INFO, d
 
   if (!visible || !message) return null;
 
-  // Determine styles based on notification type
   const getTypeStyles = () => {
     switch (type) {
       case NotificationTypes.SUCCESS:
@@ -60,7 +59,7 @@ export default function Notification({ message, type = NotificationTypes.INFO, d
             </svg>
           )
         };
-      default: // INFO
+      default:
         return {
           bg: 'bg-blue-900/80',
           border: 'border-blue-500',

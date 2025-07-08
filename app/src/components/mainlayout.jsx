@@ -13,17 +13,14 @@ export default function MainLayout({ children }) {
   const notificationRef = useRef(null);
   const loadingTimeoutRef = useRef(null);
 
-  // Set initial loading state when route changes
   useEffect(() => {
     if (location.pathname === '/auth') return;
     
     setPageLoading(true);
-    // Clear any existing timeout
     if (loadingTimeoutRef.current) {
       clearTimeout(loadingTimeoutRef.current);
     }
     
-    // Set a minimum loading time to prevent flashing
     loadingTimeoutRef.current = setTimeout(() => {
       setPageLoading(false);
     }, 500);
@@ -35,13 +32,11 @@ export default function MainLayout({ children }) {
     };
   }, [location.pathname]);
 
-  // Generate avatar URL using DiceBear API with thumbs style
   const generateAvatarUrl = (username) => {
     const seed = username || 'anonymous';
     return `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(seed)}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
   };
 
-  // Sample notifications - in a real app, these would come from an API
   const notifications = [
     { 
       id: 1, 
@@ -66,7 +61,6 @@ export default function MainLayout({ children }) {
     }
   ];
 
-  // Close notifications when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
@@ -80,20 +74,15 @@ export default function MainLayout({ children }) {
     };
   }, [notificationRef]);
 
-  // Handle search submit
   const handleSearch = (e) => {
     e.preventDefault();
-    // Implement search functionality here
     console.log('Searching for:', searchQuery);
-    // Example: navigate to search results page
-    // navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
   };
 
   const isActive = (path) => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
 
-  // Menu items organized by categories
   const menuCategories = [
     {
       name: "General",
@@ -130,7 +119,6 @@ export default function MainLayout({ children }) {
     }
   ];
 
-  // Add admin category if user is admin
   if (user && user.role === 'admin') {
     menuCategories.push({
       name: "Admin",
@@ -191,7 +179,6 @@ export default function MainLayout({ children }) {
 
   return (
     <div className="h-screen flex overflow-hidden bg-gray-900">
-      {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div 
           className="fixed inset-0 z-40 bg-gray-900 bg-opacity-75 md:hidden"
@@ -199,13 +186,11 @@ export default function MainLayout({ children }) {
         ></div>
       )}
 
-      {/* Sidebar */}
       <div 
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-800 border-r border-gray-700 transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto md:z-auto flex flex-col ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Sidebar header */}
         <div className="flex items-center justify-between px-4 py-5 border-b border-gray-700">
           <div className="flex items-center">
             <img src="/favicon.webp" alt="Osmium Logo" className="w-8 h-8" />
@@ -221,7 +206,6 @@ export default function MainLayout({ children }) {
           </button>
         </div>
 
-        {/* Sidebar content with categories */}
         <div className="py-4 flex-1 overflow-y-auto">
           {menuCategories.map((category, index) => (
             <div key={index} className="mb-6">
@@ -248,7 +232,6 @@ export default function MainLayout({ children }) {
           ))}
         </div>
 
-        {/* Sidebar footer with enhanced user info */}
         <div className="border-t border-gray-700">
           <div className="p-4">
             <div className="flex items-center">
@@ -283,14 +266,11 @@ export default function MainLayout({ children }) {
         </div>
       </div>
 
-      {/* Main content area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top navigation bar */}
         <div className="bg-gray-800 border-b border-gray-700">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16">
               <div className="flex items-center flex-1">
-                {/* Mobile menu button */}
                 <button
                   className="md:hidden text-gray-400 hover:text-white focus:outline-none"
                   onClick={() => setSidebarOpen(true)}
@@ -300,7 +280,6 @@ export default function MainLayout({ children }) {
                   </svg>
                 </button>
                 
-                {/* Search bar */}
                 <div className="ml-4 flex-1 max-w-xs">
                   <form onSubmit={handleSearch} className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -320,7 +299,6 @@ export default function MainLayout({ children }) {
               </div>
               
               <div className="flex items-center">
-                {/* Notification bell */}
                 <div className="ml-3 relative" ref={notificationRef}>
                   <button
                     className="bg-gray-700 text-white p-2 rounded-md text-sm font-medium flex items-center hover:bg-gray-600 transition-colors relative"
@@ -329,7 +307,6 @@ export default function MainLayout({ children }) {
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                       <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
                     </svg>
-                    {/* Notification badge */}
                     {notifications.filter(n => !n.read).length > 0 && (
                       <span className="absolute top-0 right-0 -mt-1 -mr-1 flex items-center justify-center h-4 w-4 rounded-full bg-red-500 text-xs font-bold text-white">
                         {notifications.filter(n => !n.read).length}
@@ -337,7 +314,6 @@ export default function MainLayout({ children }) {
                     )}
                   </button>
 
-                  {/* Notification dropdown */}
                   {notificationsOpen && (
                     <div className="origin-top-right absolute right-0 mt-2 w-80 rounded-md shadow-lg bg-gray-800 border border-gray-700 focus:outline-none z-50">
                       <div className="py-2">
@@ -381,7 +357,6 @@ export default function MainLayout({ children }) {
           </div>
         </div>
 
-        {/* Main content */}
         <main className="flex-1 overflow-y-auto bg-gray-900 relative">
           {pageLoading && location.pathname !== '/auth' && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50 z-10">
@@ -411,7 +386,6 @@ export default function MainLayout({ children }) {
             </div>
           </div>
           
-          {/* Instance navigation bar - only shown on instance pages */}
           {location.pathname.includes('/instance/') && (
             <div 
               id="instance-nav" 

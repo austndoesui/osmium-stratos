@@ -10,42 +10,28 @@ const moduleHandler = require('./handlers/module_handler');
 const app = express();
 const PORT = process.env.PORT || config.server.port || 3000;
 
-// Parse JSON bodiesy
+// ========== MIDDLEWARE ==========
 app.use(express.json());
-
-// Log all incoming requests
 app.use((req, res, next) => {
-  console.log('Incoming request:', req.method, req.url);
+  if (config.mode !== 'production') {
+    console.log('Incoming request:', req.method, req.url);
+  }
   next();
 });
 
-// Mount API routes at /api
+// ========== ROUTES ==========
 app.use('/api', router);
-
-// Serve static files from the React app build
 app.use(express.static(path.join(__dirname, 'app', 'dist')));
-
-// For any other requests, send back React's index.html
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'app', 'dist', 'index.html'));
 });
 
-// Debug log wrapper
-function debugLog(...args) {
-  if (config.mode !== 'production') {
-    console.log(...args);
-  }
+// ========== SERVER ==========
+if (config.mode !== 'production') {
+  console.log('Loaded modules:', Object.keys(moduleHandler));
 }
-function debugError(...args) {
-  if (config.mode !== 'production') {
-    console.error(...args);
-  }
-}
-
-debugLog('Loaded modules:', Object.keys(moduleHandler));
 
 const server = http.createServer(app);
-
 websocket.setupWebSocketServer(server);
 
 server.listen(PORT, () => {

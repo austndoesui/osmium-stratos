@@ -14,6 +14,7 @@ import InstanceOverview from './pages/instance/overview';
 import Console from './pages/instance/console';
 import Metrics from './pages/instance/metrics';
 import Network from './pages/instance/network';
+import History from './pages/instance/history';
 import Destroy from './pages/instance/destroy';
 import Resize from './pages/instance/resize';
 import Auth from './pages/auth';
@@ -104,6 +105,7 @@ function AppRoutes() {
       <Route path="/instance/:hostId/:instanceName/console" element={<RequireAuth><Console /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/metrics" element={<RequireAuth><Metrics /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/network" element={<RequireAuth><Network /></RequireAuth>} />
+      <Route path="/instance/:hostId/:instanceName/history" element={<RequireAuth><History /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/destroy" element={<RequireAuth><Destroy /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/resize" element={<RequireAdmin><Resize /></RequireAdmin>} />
       {/* Catch-all route for 404 */}

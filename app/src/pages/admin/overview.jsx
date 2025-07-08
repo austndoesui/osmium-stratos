@@ -5,7 +5,6 @@ export default function AdminOverview() {
   return (
     <MainLayout>
       <div className="p-4 md:p-6">
-        {/* Breadcrumb - matching dashboard.jsx style */}
         <div className="mb-4">
           <nav className="flex" aria-label="Breadcrumb">
             <ol className="inline-flex items-center space-x-1 md:space-x-2">
@@ -36,13 +35,11 @@ export default function AdminOverview() {
           </nav>
         </div>
         
-        {/* Page header with heading and subheading */}
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-white">Admin Overview</h1>
           <p className="text-base text-gray-400">Monitor system status and access essential admin tools</p>
         </div>
         
-        {/* Main card with dark theme but layout like the image */}
         <div className="bg-gray-800 rounded-lg p-6 shadow-md mb-6 border border-gray-700 hover:border-gray-600 transition-colors">
           <div className="flex items-center">
             <div className="mr-4">
@@ -55,7 +52,6 @@ export default function AdminOverview() {
           </div>
         </div>
         
-        {/* Action buttons - updated to be fully colored with uncolored text */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <a href="https://discord.gg/jADngpHumj" target="_blank" rel="noopener noreferrer" className="bg-orange-500/20 hover:bg-orange-500/30 transition-colors rounded-md py-2 px-4 flex items-center justify-center shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-400 mr-1.5" viewBox="0 0 20 20" fill="currentColor">

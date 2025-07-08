@@ -67,6 +67,21 @@ db.serialize(() => {
     FOREIGN KEY (instance_id) REFERENCES instances(id),
     FOREIGN KEY (host_id) REFERENCES host(id)
   )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT,
+    action TEXT NOT NULL,
+    instance_id INTEGER,
+    instance_name TEXT,
+    host_id INTEGER,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    details TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (instance_id) REFERENCES instances(id),
+    FOREIGN KEY (host_id) REFERENCES host(id)
+  )`);
 });
 
 module.exports = db;

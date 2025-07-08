@@ -20,10 +20,9 @@ export default function InstanceHeader({
   const [refreshing, setRefreshing] = useState(false);
   const refreshTimerRef = useRef(null);
   const refreshCountRef = useRef(0);
-  const maxRefreshAttempts = 10; // Maximum number of refresh attempts
-  const refreshInterval = 2000; // Refresh every 2 seconds
+  const maxRefreshAttempts = 20;
+  const refreshInterval = 2000;
 
-  // Get current page from URL
   const getCurrentPage = () => {
     const path = location.pathname;
     if (path.endsWith('/metrics')) return 'Metrics';
@@ -35,17 +34,14 @@ export default function InstanceHeader({
     return 'Overview';
   };
 
-  // Helper to normalize status string
   const normalizedStatus = (status) => (status ? status.toLowerCase() : '');
 
-  // Helper to get image label from alias
   const getImageLabel = (alias) => {
     if (!alias) return '';
     const found = images.find(img => img.value === alias);
     return found ? found.label : alias;
   };
 
-  // Helper to get host IP from instanceInfo
   const getHostIp = () => {
     const info = localInstanceInfo || instanceInfo;
     if (info && info.host && info.host.address) {
@@ -58,14 +54,12 @@ export default function InstanceHeader({
     return '';
   };
 
-  // Function to fetch the latest instance status
   const fetchInstanceStatus = () => {
     if (refreshing && refreshCountRef.current < maxRefreshAttempts) {
       setRefreshing(true);
       fetch('/api/vms')
         .then(res => res.json())
         .then(data => {
-          // Find the current instance in the returned data
           let found = null;
           data.forEach(({ host, vms }) => {
             if (Array.isArray(vms)) {
@@ -79,21 +73,30 @@ export default function InstanceHeader({
           
           if (found) {
             setLocalInstanceInfo(found);
-            
-            // If status is what we expect after an action, stop refreshing
             const expectedStatus = loading === 'start' ? 'running' : 
                                   loading === 'stop' ? 'stopped' : 
                                   loading === 'restart' ? 'running' : null;
-            
-            if (expectedStatus && normalizedStatus(found.status) === expectedStatus) {
+            const actualStatus = normalizedStatus(found.status);
+            console.log('[InstanceHeader] Checking status:', { actualStatus, expectedStatus, raw: found.status, loading });
+            if (expectedStatus && actualStatus === expectedStatus) {
+              setLocalInstanceInfo(found);
               setRefreshing(false);
               refreshCountRef.current = 0;
+              setLoading('');
               if (refreshTimerRef.current) {
                 clearTimeout(refreshTimerRef.current);
                 refreshTimerRef.current = null;
               }
+            } else if (loading === 'start' && actualStatus === 'starting') {
+              console.log('[InstanceHeader] Still starting, polling again...');
+              refreshCountRef.current += 1;
+              if (refreshCountRef.current < maxRefreshAttempts) {
+                refreshTimerRef.current = setTimeout(fetchInstanceStatus, refreshInterval);
+              } else {
+                setRefreshing(false);
+                refreshCountRef.current = 0;
+              }
             } else {
-              // Continue refreshing
               refreshCountRef.current += 1;
               if (refreshCountRef.current < maxRefreshAttempts) {
                 refreshTimerRef.current = setTimeout(fetchInstanceStatus, refreshInterval);
@@ -112,19 +115,16 @@ export default function InstanceHeader({
     }
   };
 
-  // Use effect to update localInstanceInfo when instanceInfo changes
   useEffect(() => {
     if (instanceInfo) {
       setLocalInstanceInfo(instanceInfo);
     }
   }, [instanceInfo]);
 
-  // Start refreshing when a power action is initiated
   useEffect(() => {
     if (loading && (loading === 'start' || loading === 'stop' || loading === 'restart')) {
       setRefreshing(true);
       refreshCountRef.current = 0;
-      // Start the refresh cycle after a short delay
       refreshTimerRef.current = setTimeout(fetchInstanceStatus, refreshInterval);
     }
 
@@ -137,13 +137,11 @@ export default function InstanceHeader({
   }, [loading]);
 
   useEffect(() => {
-    // Fetch images list
     fetch('/api/images')
       .then(res => res.json())
       .then(setImages)
       .catch(() => setImages([]));
 
-    // Fetch instance config from DB
     setLoadingDbConfig(true);
     fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/config`)
       .then(res => res.ok ? res.json() : null)
@@ -156,7 +154,6 @@ export default function InstanceHeader({
         setLoadingDbConfig(false);
       });
       
-    // Clean up on unmount
     return () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
@@ -179,19 +176,16 @@ export default function InstanceHeader({
     }
   };
 
-  // Manual refresh button handler
   const handleManualRefresh = () => {
     setRefreshing(true);
     refreshCountRef.current = 0;
     fetchInstanceStatus();
   };
 
-  // Use local instance info if available, otherwise fall back to the prop
   const displayInstanceInfo = localInstanceInfo || instanceInfo;
 
   return (
     <>
-      {/* Breadcrumb navigation */}
       <div className="mb-6">
         <nav className="flex" aria-label="Breadcrumb">
           <ol className="inline-flex items-center space-x-1 md:space-x-2">
@@ -232,7 +226,6 @@ export default function InstanceHeader({
         </nav>
       </div>
 
-      {/* Main heading with status */}
       <div className="flex justify-between items-start mb-2">
         <div>
           <div className="flex items-center">
@@ -361,7 +354,6 @@ export default function InstanceHeader({
         </div>
       </div>
 
-      {/* Navigation placeholder */}
       <div ref={navPlaceholderRef} className="mb-6 pt-4"></div>
     </>
   );

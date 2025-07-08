@@ -3,7 +3,6 @@ const { parseImageSource } = require('./image');
 
 // Create a new VM or container on a given host
 function createVM(host, { name, imageAlias, type, cpu, ram, disk }, callback) {
-  console.log('createVM called with:', { host: host.address, name, imageAlias, type, cpu, ram, disk });
   const url = new URL(host.address);
 
   // Step 1: Check if instance with the same name exists
@@ -77,7 +76,6 @@ function createVM(host, { name, imageAlias, type, cpu, ram, disk }, callback) {
       config: instanceConfig,
       ...(Object.keys(devices).length > 0 ? { devices } : {}),
     });
-    console.log('LXD API POST /1.0/instances payload:', postData);
     const options = {
       hostname: url.hostname,
       port: url.port,
@@ -434,16 +432,13 @@ function getInstanceUsage(host, name, callback) {
     rejectUnauthorized: false,
     timeout: 10000,
   };
-  console.log('[getInstanceUsage] Request options:', options);
   const req = https.request(options, (res) => {
     let data = '';
     res.on('data', (chunk) => { data += chunk; });
     res.on('end', () => {
-      console.log('[getInstanceUsage] Response status:', res.statusCode);
       if (res.statusCode === 200) {
         try {
           const parsed = JSON.parse(data);
-          console.log('[getInstanceUsage] Parsed response:', parsed);
           const meta = parsed.metadata || {};
           callback(null, {
             cpu: meta.cpu ? meta.cpu.usage : null,
@@ -453,22 +448,22 @@ function getInstanceUsage(host, name, callback) {
             raw: meta // for debugging/future use
           });
         } catch (e) {
-          console.error('[getInstanceUsage] Failed to parse response:', e, data);
+          console.error('Failed to parse response:', e, data);
           callback(new Error('Failed to parse LXD state response'));
         }
       } else {
-        console.error('[getInstanceUsage] LXD API error:', res.statusCode, data);
+        console.error('LXD API error:', res.statusCode, data);
         callback(new Error('LXD API error: ' + data));
       }
     });
   });
   req.on('error', (err) => {
-    console.error('[getInstanceUsage] Request error:', err);
+    console.error('Request error:', err);
     callback(err);
   });
   req.on('timeout', () => {
     req.destroy();
-    console.error('[getInstanceUsage] Request timed out');
+    console.error('Request timed out');
     callback(new Error('Connection timed out'));
   });
   req.end();
@@ -476,7 +471,6 @@ function getInstanceUsage(host, name, callback) {
 
 // Resize a VM or container on a given host
 function resizeInstance(host, name, { cpu, ram, disk }, callback) {
-  const url = new URL(host.address);
   // Step 1: PATCH config for cpu/ram
   const patchConfig = {};
   if (cpu) patchConfig["limits.cpu"] = String(cpu);
