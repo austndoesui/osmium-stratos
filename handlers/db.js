@@ -6,8 +6,6 @@ const dbPath = path.join(__dirname, '..', config.database.name);
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Failed to connect to database:', err.message);
-  } else {
-    console.log('Connected to SQLite database:', dbPath);
   }
 });
 
