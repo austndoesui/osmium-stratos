@@ -394,7 +394,7 @@ export default function AdminNode() {
                 <thead className="bg-gray-700/50">
                   <tr>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Name</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Address</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Instances</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
                     <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                   </tr>
@@ -407,8 +407,7 @@ export default function AdminNode() {
                         {host.description && <div className="text-xs text-gray-400">{host.description}</div>}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="text-sm text-gray-300">{host.address}</div>
-                        <div className="text-xs text-gray-400">https://{host.address}:8443</div>
+                        <div className="text-sm text-gray-300">{typeof instanceCounts[host.id] === 'number' ? instanceCounts[host.id] : '...'}</div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${

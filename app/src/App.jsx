@@ -34,7 +34,7 @@ function getUserFromJWT() {
   if (!token) return null;
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
-    // Check for expiration
+    
     if (payload.exp && Date.now() / 1000 > payload.exp) {
       localStorage.removeItem('jwt');
       return null;
@@ -54,6 +54,17 @@ function AuthProvider({ children }) {
     window.addEventListener('storage', handler);
     return () => window.removeEventListener('storage', handler);
   }, []);
+
+  useEffect(() => {
+    const tokenCheckInterval = setInterval(() => {
+      const currentUser = getUserFromJWT();
+      if (user && !currentUser) {
+        logout();
+      }
+    }, 30000);
+
+    return () => clearInterval(tokenCheckInterval);
+  }, [user]);
 
   const login = (token) => {
     localStorage.setItem('jwt', token);

@@ -17,6 +17,9 @@ export default function AdminInstances() {
   const [userResults, setUserResults] = useState([]);
   const [userSearchLoading, setUserSearchLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const itemsPerPage = 10;
   const modalRef = useRef(null);
   const buttonRef = useRef(null);
   const navigate = useNavigate();
@@ -89,6 +92,12 @@ export default function AdminInstances() {
       setUserQuery('');
     }
   }, [showModal]);
+
+  useEffect(() => {
+    if (instances.length > 0) {
+      setTotalPages(Math.ceil(instances.length / itemsPerPage));
+    }
+  }, [instances]);
 
   const fetchInstances = () => {
     setLoading(true);
@@ -174,6 +183,16 @@ export default function AdminInstances() {
         setLoading(false);
       });
   };
+
+  const handlePageChange = (page) => {
+    if (page < 1 || page > totalPages) return;
+    setCurrentPage(page);
+  };
+
+  // Calculate the current page's instances
+  const indexOfLastInstance = currentPage * itemsPerPage;
+  const indexOfFirstInstance = indexOfLastInstance - itemsPerPage;
+  const currentInstances = instances.slice(indexOfFirstInstance, indexOfLastInstance);
 
   const isSelectedImageVMSupported = () => {
     const selected = imageOptions.find(img => img.value === form.imageAlias);
@@ -475,7 +494,7 @@ export default function AdminInstances() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700 bg-gray-800">
-                  {instances.map((instance, index) => (
+                  {currentInstances.map((instance, index) => (
                     <tr key={`${instance.host.id}-${instance.name}`} className="hover:bg-gray-700/30">
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="text-sm font-medium text-white">{instance.name}</div>
@@ -537,7 +556,42 @@ export default function AdminInstances() {
           
           <div className="px-4 py-3 border-t border-gray-700 flex items-center justify-between">
             <div className="text-sm text-gray-400">
-              Showing <span className="font-medium text-white">{instances.length > 0 ? `1-${instances.length}` : '0'}</span> of <span className="font-medium text-white">{instances.length}</span> instances
+              Showing <span className="font-medium text-white">
+                {instances.length > 0 ? `${indexOfFirstInstance + 1}-${Math.min(indexOfLastInstance, instances.length)}` : '0'}
+              </span> of <span className="font-medium text-white">{instances.length}</span> instances
+            </div>
+            <div className="flex space-x-1">
+              <button 
+                className={`px-2 py-1 border border-gray-600 rounded-md text-sm ${
+                  currentPage === 1 ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700'
+                }`} 
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  className={`px-2 py-1 border ${
+                    currentPage === page 
+                      ? 'border-white bg-gray-700 text-white' 
+                      : 'border-gray-600 text-gray-400 hover:bg-gray-700'
+                  } rounded-md text-sm`}
+                  onClick={() => handlePageChange(page)}
+                >
+                  {page}
+                </button>
+              ))}
+              <button 
+                className={`px-2 py-1 border border-gray-600 rounded-md text-sm ${
+                  currentPage === totalPages ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700'
+                }`} 
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </button>
             </div>
           </div>
         </div>

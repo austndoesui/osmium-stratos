@@ -10,6 +10,9 @@ export default function AdminUsers() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ username: '', email: '', password: '', role: 'user' });
   const [submitting, setSubmitting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const itemsPerPage = 10;
   const modalRef = useRef(null);
   const buttonRef = useRef(null);
   const { showSuccess, showError } = useNotification();
@@ -33,6 +36,12 @@ export default function AdminUsers() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showModal]);
+
+  useEffect(() => {
+    if (users.length > 0) {
+      setTotalPages(Math.ceil(users.length / itemsPerPage));
+    }
+  }, [users]);
 
   const fetchUsers = () => {
     setLoading(true);
@@ -118,6 +127,16 @@ export default function AdminUsers() {
         alert('Error deleting user: ' + err.message);
       });
   };
+
+  const handlePageChange = (page) => {
+    if (page < 1 || page > totalPages) return;
+    setCurrentPage(page);
+  };
+
+  // Calculate the current page's users
+  const indexOfLastUser = currentPage * itemsPerPage;
+  const indexOfFirstUser = indexOfLastUser - itemsPerPage;
+  const currentUsers = users.slice(indexOfFirstUser, indexOfLastUser);
 
   return (
     <MainLayout>
@@ -315,7 +334,7 @@ export default function AdminUsers() {
                     </td>
                   </tr>
                 ) : (
-                  users.map((user, index) => (
+                  currentUsers.map((user, index) => (
                     <tr key={user.id || index} className="hover:bg-gray-700/30">
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center">
@@ -346,13 +365,40 @@ export default function AdminUsers() {
           
           <div className="px-4 py-3 border-t border-gray-700 flex items-center justify-between">
             <div className="text-sm text-gray-400">
-              Showing <span className="font-medium text-white">{users.length > 0 ? `1-${users.length}` : '0'}</span> of <span className="font-medium text-white">{users.length}</span> users
+              Showing <span className="font-medium text-white">
+                {users.length > 0 ? `${indexOfFirstUser + 1}-${Math.min(indexOfLastUser, users.length)}` : '0'}
+              </span> of <span className="font-medium text-white">{users.length}</span> users
             </div>
             <div className="flex space-x-1">
-              <button className="px-2 py-1 border border-gray-600 rounded-md text-gray-400 text-sm disabled:opacity-50" disabled>
+              <button 
+                className={`px-2 py-1 border border-gray-600 rounded-md text-sm ${
+                  currentPage === 1 ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700'
+                }`} 
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
                 Previous
               </button>
-              <button className="px-2 py-1 border border-gray-600 rounded-md text-gray-400 text-sm disabled:opacity-50" disabled>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  className={`px-2 py-1 border ${
+                    currentPage === page 
+                      ? 'border-white bg-gray-700 text-white' 
+                      : 'border-gray-600 text-gray-400 hover:bg-gray-700'
+                  } rounded-md text-sm`}
+                  onClick={() => handlePageChange(page)}
+                >
+                  {page}
+                </button>
+              ))}
+              <button 
+                className={`px-2 py-1 border border-gray-600 rounded-md text-sm ${
+                  currentPage === totalPages ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700'
+                }`} 
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
                 Next
               </button>
             </div>
