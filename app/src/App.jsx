@@ -17,6 +17,7 @@ import Network from './pages/instance/network';
 import History from './pages/instance/history';
 import Destroy from './pages/instance/destroy';
 import Resize from './pages/instance/resize';
+import Snapshots from './pages/instance/snapshots';
 import Auth from './pages/auth';
 import Instances from './pages/instances';
 import Account from './pages/account';
@@ -119,6 +120,7 @@ function AppRoutes() {
       <Route path="/instance/:hostId/:instanceName/history" element={<RequireAuth><History /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/destroy" element={<RequireAuth><Destroy /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/resize" element={<RequireAdmin><Resize /></RequireAdmin>} />
+      <Route path="/instance/:hostId/:instanceName/snapshots" element={<RequireAuth><Snapshots /></RequireAuth>} />
       {/* Catch-all route for 404 */}
       <Route path="*" element={<NotFound />} />
     </Routes>

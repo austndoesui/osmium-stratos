@@ -316,13 +316,6 @@ export default function InstanceOverview() {
                     </div>
                   </div>
                   
-                  {/* Snapshots */}
-                  <div>
-                    <h3 className="text-lg font-medium text-white mb-3">Snapshots</h3>
-                    <div className="text-gray-400 text-sm">
-                      No snapshots available
-                    </div>
-                  </div>
                 </div>
               </div>
             )}

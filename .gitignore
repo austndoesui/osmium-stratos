@@ -1,0 +1,11 @@
+# Ignore node modules for both backend and frontend
+node_modules/
+app/node_modules/
+
+# Ignore database file
+osmium.db
+
+# Ignore OS and editor files
+.DS_Store
+*.log
+.env 

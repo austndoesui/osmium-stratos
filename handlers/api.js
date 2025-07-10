@@ -12,6 +12,7 @@ const bcrypt = require('bcrypt');
 const { updateProfile, changePassword } = require('../modules/account');
 const network = require('../modules/network');
 const auditLogs = require('../modules/audit_logs');
+const snapshot = require('../modules/snapshot');
 
 const router = express.Router();
 
@@ -524,6 +525,62 @@ router.post('/hosts/:id/vms/:name/resize', (req, res) => {
           res.status(200).json({ ...result });
         }
       );
+    });
+  });
+});
+
+
+router.post('/hosts/:hostId/vms/:instanceName/snapshots', (req, res) => {
+  hosts.getHost(req.params.hostId, (err, host) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!host) return res.status(404).json({ error: 'Host not found' });
+    const { name, stateful } = req.body;
+    snapshot.createSnapshot(host, req.params.instanceName, { name, stateful }, (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.status(201).json(result);
+    });
+  });
+});
+
+
+router.get('/hosts/:hostId/vms/:instanceName/snapshots', (req, res) => {
+  hosts.getHost(req.params.hostId, (err, host) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!host) return res.status(404).json({ error: 'Host not found' });
+    snapshot.listSnapshots(host, req.params.instanceName, (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      // Transform to match frontend expectations
+      const transformed = (result || []).map(snap => ({
+        id: snap.name, // Use name as unique id
+        name: snap.name,
+        created_at: snap.created_at || snap.creation_date || snap.created_at || null,
+        size: typeof snap.size === 'number' ? snap.size : (snap.stateful && snap.stateful_size ? snap.stateful_size : null)
+      }));
+      res.json(transformed);
+    });
+  });
+});
+
+
+router.post('/hosts/:hostId/vms/:instanceName/snapshots/:snapshotName/restore', (req, res) => {
+  hosts.getHost(req.params.hostId, (err, host) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!host) return res.status(404).json({ error: 'Host not found' });
+    snapshot.restoreSnapshot(host, req.params.instanceName, req.params.snapshotName, (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(result);
+    });
+  });
+});
+
+
+router.delete('/hosts/:hostId/vms/:instanceName/snapshots/:snapshotName', (req, res) => {
+  hosts.getHost(req.params.hostId, (err, host) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!host) return res.status(404).json({ error: 'Host not found' });
+    snapshot.deleteSnapshot(host, req.params.instanceName, req.params.snapshotName, (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.status(200).json({ success: true });
     });
   });
 });
