@@ -275,7 +275,7 @@ export default function AdminNode() {
                           value={form.address} 
                           onChange={handleChange} 
                           required 
-                          placeholder="LXD Node IP (e.g. 1.2.3.4)"
+                          placeholder="Node IP (e.g. 1.2.3.4)"
                           className="w-full bg-gray-700 border border-gray-600 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-white"
                         />
                         <div className="text-xs text-gray-400 mt-1">Just enter the IP. The panel will use <span className="font-mono">https://IP:8443</span> automatically.</div>
