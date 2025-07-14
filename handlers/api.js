@@ -13,11 +13,33 @@ const { updateProfile, changePassword } = require('../modules/account');
 const network = require('../modules/network');
 const auditLogs = require('../modules/audit_logs');
 const snapshot = require('../modules/snapshot');
+const { verify2FA } = require('../modules/2fa');
+const speakeasy = require('speakeasy');
+const qrcode = require('qrcode');
+const crypto = require('crypto');
 
 const router = express.Router();
 
 // Apply Passport.js auth
 setupAuth(router);
+
+// 2FA login verification endpoint
+router.post('/2fa/verify-login', async (req, res) => {
+  const { user_id, token } = req.body;
+  if (!user_id || !token) {
+    return res.status(400).json({ error: 'User ID and 2FA code are required.' });
+  }
+  db.get('SELECT * FROM users WHERE id = ?', [user_id], async (err, user) => {
+    if (err || !user) return res.status(401).json({ error: 'Invalid user.' });
+    const valid = await verify2FA(user_id, token);
+    if (!valid) return res.status(401).json({ error: 'Invalid 2FA code.' });
+    const jwt = require('jsonwebtoken');
+    const config = require('./config');
+    const JWT_SECRET = config.session.secret || 'replace-this-with-a-long-random-secret-key';
+    const jwtToken = jwt.sign({ id: user.id, username: user.username, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '10m' });
+    res.json({ success: true, token: jwtToken, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+  });
+});
 
 // ================= HOSTS =================
 router.get('/hosts', (req, res) => {
@@ -434,6 +456,124 @@ router.post('/account/change-password', router.ensureAuthenticated, async (req, 
   }
 });
 
+// 2FA endpoints
+router.get('/account/2fa/status', router.ensureAuthenticated, (req, res) => {
+  const userId = req.user.id;
+  db.get('SELECT two_fa_enabled FROM users WHERE id = ?', [userId], (err, user) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to get 2FA status' });
+    }
+    res.json({ enabled: !!user.two_fa_enabled });
+  });
+});
+
+router.post('/account/2fa/setup', router.ensureAuthenticated, (req, res) => {
+  const userId = req.user.id;
+  const username = req.user.username;
+  const secret = speakeasy.generateSecret({
+    name: `Osmium Stratos (${username})`,
+    issuer: 'Osmium Stratos',
+    length: 32
+  });
+  const recoveryCodes = [];
+  for (let i = 0; i < 10; i++) {
+    const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+    recoveryCodes.push(code);
+  }
+  qrcode.toDataURL(secret.otpauth_url, (err, qrCodeUrl) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to generate QR code' });
+    }
+    res.json({
+      secret: secret.base32,
+      qrCode: qrCodeUrl,
+      recoveryCodes: recoveryCodes
+    });
+  });
+});
+
+router.post('/account/2fa/verify', router.ensureAuthenticated, (req, res) => {
+  const { token, secret } = req.body;
+  const userId = req.user.id;
+  if (!token || !secret) {
+    return res.status(400).json({ error: 'Token and secret are required' });
+  }
+  const verified = speakeasy.totp.verify({
+    secret: secret,
+    encoding: 'base32',
+    token: token,
+    window: 2
+  });
+  if (!verified) {
+    return res.status(400).json({ error: 'Invalid verification code' });
+  }
+  const recoveryCodes = [];
+  for (let i = 0; i < 10; i++) {
+    const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+    recoveryCodes.push(code);
+  }
+  const recoveryCodesJson = JSON.stringify(recoveryCodes);
+  db.run(
+    'UPDATE users SET two_fa_secret = ?, two_fa_enabled = 1, recovery_codes = ? WHERE id = ?',
+    [secret, recoveryCodesJson, userId],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to enable 2FA' });
+      }
+      res.json({
+        success: true,
+        message: '2FA enabled successfully',
+        recoveryCodes: recoveryCodes
+      });
+    }
+  );
+});
+
+router.post('/account/2fa/disable', router.ensureAuthenticated, (req, res) => {
+  const userId = req.user.id;
+  db.run(
+    'UPDATE users SET two_fa_secret = NULL, two_fa_enabled = 0, recovery_codes = NULL WHERE id = ?',
+    [userId],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to disable 2FA' });
+      }
+      res.json({ success: true, message: '2FA disabled successfully' });
+    }
+  );
+});
+
+router.post('/account/2fa/recovery-codes', router.ensureAuthenticated, (req, res) => {
+  const userId = req.user.id;
+  db.get('SELECT two_fa_enabled FROM users WHERE id = ?', [userId], (err, user) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!user.two_fa_enabled) {
+      return res.status(400).json({ error: '2FA is not enabled' });
+    }
+    const recoveryCodes = [];
+    for (let i = 0; i < 10; i++) {
+      const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+      recoveryCodes.push(code);
+    }
+    const recoveryCodesJson = JSON.stringify(recoveryCodes);
+    db.run(
+      'UPDATE users SET recovery_codes = ? WHERE id = ?',
+      [recoveryCodesJson, userId],
+      function(err) {
+        if (err) {
+          return res.status(500).json({ error: 'Failed to regenerate recovery codes' });
+        }
+        res.json({
+          success: true,
+          recoveryCodes: recoveryCodes
+        });
+      }
+    );
+  });
+});
+
 // ================= INSTANCE UTILS =================
 router.get('/hosts/:id/vms/:name/usage', (req, res) => {
   hosts.getHost(req.params.id, (err, host) => {
@@ -549,9 +689,9 @@ router.get('/hosts/:hostId/vms/:instanceName/snapshots', (req, res) => {
     if (!host) return res.status(404).json({ error: 'Host not found' });
     snapshot.listSnapshots(host, req.params.instanceName, (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
-      // Transform to match frontend expectations
+    
       const transformed = (result || []).map(snap => ({
-        id: snap.name, // Use name as unique id
+        id: snap.name,
         name: snap.name,
         created_at: snap.created_at || snap.creation_date || snap.created_at || null,
         size: typeof snap.size === 'number' ? snap.size : (snap.stateful && snap.stateful_size ? snap.stateful_size : null)
@@ -584,5 +724,37 @@ router.delete('/hosts/:hostId/vms/:instanceName/snapshots/:snapshotName', (req, 
     });
   });
 });
+
+// ================= NOTIFICATIONS =================
+router.get('/notifications', router.ensureAuthenticated, (req, res) => {
+  db.all(
+    'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+    [req.user.id],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
+router.post('/notifications/:id/read', router.ensureAuthenticated, (req, res) => {
+  db.run(
+    'UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?',
+    [req.params.id, req.user.id],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true });
+    }
+  );
+});
+
+
+function createNotification({ user_id, title, message, type }) {
+  db.run(
+    'INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)',
+    [user_id, title, message, type || null]
+  );
+}
+module.exports.createNotification = createNotification;
 
 module.exports = router;

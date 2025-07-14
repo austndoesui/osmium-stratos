@@ -5,6 +5,7 @@ import { useNotification } from '../../providers/NotificationProvider';
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
+  const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -16,6 +17,10 @@ export default function AdminUsers() {
   const modalRef = useRef(null);
   const buttonRef = useRef(null);
   const { showSuccess, showError } = useNotification();
+  
+  // Filtering states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
 
   useEffect(() => {
     fetchUsers();
@@ -38,10 +43,34 @@ export default function AdminUsers() {
   }, [showModal]);
 
   useEffect(() => {
-    if (users.length > 0) {
-      setTotalPages(Math.ceil(users.length / itemsPerPage));
+    // Apply filtering whenever users or filter criteria change
+    let result = [...users];
+    
+    // Apply role filter
+    if (roleFilter !== 'all') {
+      result = result.filter(user => user.role === roleFilter);
     }
-  }, [users]);
+    
+    // Apply search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      result = result.filter(user => 
+        user.username.toLowerCase().includes(searchLower) || 
+        user.email.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    setFilteredUsers(result);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [users, roleFilter, searchTerm]);
+
+  useEffect(() => {
+    if (filteredUsers.length > 0) {
+      setTotalPages(Math.ceil(filteredUsers.length / itemsPerPage));
+    } else {
+      setTotalPages(1);
+    }
+  }, [filteredUsers]);
 
   const fetchUsers = () => {
     setLoading(true);
@@ -54,6 +83,7 @@ export default function AdminUsers() {
       })
       .then(data => {
         setUsers(data);
+        setFilteredUsers(data);
         setError(null);
       })
       .catch(err => {
@@ -136,7 +166,12 @@ export default function AdminUsers() {
   // Calculate the current page's users
   const indexOfLastUser = currentPage * itemsPerPage;
   const indexOfFirstUser = indexOfLastUser - itemsPerPage;
-  const currentUsers = users.slice(indexOfFirstUser, indexOfLastUser);
+  const currentUsers = filteredUsers.slice(indexOfFirstUser, indexOfLastUser);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setRoleFilter('all');
+  };
 
   return (
     <MainLayout>
@@ -292,7 +327,56 @@ export default function AdminUsers() {
         
         <div className="bg-gray-800 rounded-lg shadow-md border border-gray-700 overflow-hidden">
           <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-medium text-white">All Users</h2>
+            <div className="flex flex-wrap items-center justify-between">
+              <h2 className="text-lg font-medium text-white">All Users</h2>
+              
+              {/* Filtering and search controls */}
+              <div className="flex items-center gap-3 mt-0 md:mt-0">
+                <div className="w-44 md:w-52 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search users"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-md pl-10 pr-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-white"
+                  />
+                </div>
+                
+                <div className="relative inline-block">
+                  <select
+                    value={roleFilter}
+                    onChange={(e) => setRoleFilter(e.target.value)}
+                    className="appearance-none bg-gray-700 border border-gray-600 rounded-md pl-3 pr-8 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-white cursor-pointer"
+                  >
+                    <option value="all">All Roles</option>
+                    <option value="admin">Admin</option>
+                    <option value="user">User</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+                
+                {(searchTerm || roleFilter !== 'all') && (
+                  <button
+                    onClick={clearFilters}
+                    className="inline-flex items-center px-3 py-1.5 border border-gray-600 rounded-md text-sm text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-white transition-colors cursor-pointer"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
           
           {error && (
@@ -305,9 +389,24 @@ export default function AdminUsers() {
             <table className="min-w-full divide-y divide-gray-700">
               <thead className="bg-gray-700/50">
                 <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Username</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
+                  <th 
+                    scope="col" 
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+                  >
+                    Username
+                  </th>
+                  <th 
+                    scope="col" 
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+                  >
+                    Email
+                  </th>
+                  <th 
+                    scope="col" 
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+                  >
+                    Role
+                  </th>
                   <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -321,7 +420,7 @@ export default function AdminUsers() {
                       <div className="mt-2 text-sm text-gray-400">Loading users...</div>
                     </td>
                   </tr>
-                ) : users.length === 0 ? (
+                ) : filteredUsers.length === 0 ? (
                   <tr>
                     <td colSpan="4" className="px-4 py-8 text-center">
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-700/30 mb-4">
@@ -330,7 +429,9 @@ export default function AdminUsers() {
                         </svg>
                       </div>
                       <div className="text-gray-400 font-medium">No users found</div>
-                      <p className="text-gray-500 text-sm mt-1">Create a new user to get started</p>
+                      <p className="text-gray-500 text-sm mt-1">
+                        {searchTerm || roleFilter !== 'all' ? 'Try adjusting your filters' : 'Create a new user to get started'}
+                      </p>
                     </td>
                   </tr>
                 ) : (
@@ -353,8 +454,8 @@ export default function AdminUsers() {
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                        <button className="text-white hover:text-gray-300 mr-3 transition-colors">Edit</button>
-                        <button className="text-red-400 hover:text-red-300 transition-colors" onClick={() => handleDelete(user.id, user.username)}>Delete</button>
+                        <button className="text-white hover:text-gray-300 mr-3 transition-colors cursor-pointer">Edit</button>
+                        <button className="text-red-400 hover:text-red-300 transition-colors cursor-pointer" onClick={() => handleDelete(user.id, user.username)}>Delete</button>
                       </td>
                     </tr>
                   ))
@@ -366,13 +467,13 @@ export default function AdminUsers() {
           <div className="px-4 py-3 border-t border-gray-700 flex items-center justify-between">
             <div className="text-sm text-gray-400">
               Showing <span className="font-medium text-white">
-                {users.length > 0 ? `${indexOfFirstUser + 1}-${Math.min(indexOfLastUser, users.length)}` : '0'}
-              </span> of <span className="font-medium text-white">{users.length}</span> users
+                {filteredUsers.length > 0 ? `${indexOfFirstUser + 1}-${Math.min(indexOfLastUser, filteredUsers.length)}` : '0'}
+              </span> of <span className="font-medium text-white">{filteredUsers.length}</span> users
             </div>
             <div className="flex space-x-1">
               <button 
                 className={`px-2 py-1 border border-gray-600 rounded-md text-sm ${
-                  currentPage === 1 ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700'
+                  currentPage === 1 ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700 cursor-pointer'
                 }`} 
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
@@ -386,7 +487,7 @@ export default function AdminUsers() {
                     currentPage === page 
                       ? 'border-white bg-gray-700 text-white' 
                       : 'border-gray-600 text-gray-400 hover:bg-gray-700'
-                  } rounded-md text-sm`}
+                  } rounded-md text-sm cursor-pointer`}
                   onClick={() => handlePageChange(page)}
                 >
                   {page}
@@ -394,7 +495,7 @@ export default function AdminUsers() {
               ))}
               <button 
                 className={`px-2 py-1 border border-gray-600 rounded-md text-sm ${
-                  currentPage === totalPages ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700'
+                  currentPage === totalPages ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700 cursor-pointer'
                 }`} 
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}

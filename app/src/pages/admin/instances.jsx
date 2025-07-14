@@ -5,6 +5,7 @@ import { useNotification } from '../../providers/NotificationProvider';
 
 export default function AdminInstances() {
   const [instances, setInstances] = useState([]);
+  const [filteredInstances, setFilteredInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -25,6 +26,11 @@ export default function AdminInstances() {
   const navigate = useNavigate();
   const userSearchTimeout = useRef(null);
   const { showSuccess, showError } = useNotification();
+
+  // Filtering states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     fetchInstances();
@@ -93,11 +99,43 @@ export default function AdminInstances() {
     }
   }, [showModal]);
 
+  // Apply filtering whenever instances or filter criteria change
   useEffect(() => {
-    if (instances.length > 0) {
-      setTotalPages(Math.ceil(instances.length / itemsPerPage));
+    let result = [...instances];
+    
+    // Apply type filter
+    if (typeFilter !== 'all') {
+      result = result.filter(instance => instance.type === typeFilter);
     }
-  }, [instances]);
+    
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      result = result.filter(instance => instance.status === statusFilter);
+    }
+    
+    // Apply search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      result = result.filter(instance => 
+        instance.name.toLowerCase().includes(searchLower) ||
+        instance.host.name.toLowerCase().includes(searchLower) ||
+        (instance.owner && 
+          (instance.owner.username.toLowerCase().includes(searchLower) || 
+           instance.owner.email.toLowerCase().includes(searchLower)))
+      );
+    }
+    
+    setFilteredInstances(result);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [instances, typeFilter, statusFilter, searchTerm]);
+
+  useEffect(() => {
+    if (filteredInstances.length > 0) {
+      setTotalPages(Math.ceil(filteredInstances.length / itemsPerPage));
+    } else {
+      setTotalPages(1);
+    }
+  }, [filteredInstances]);
 
   const fetchInstances = () => {
     setLoading(true);
@@ -113,6 +151,7 @@ export default function AdminInstances() {
           }
         });
         setInstances(allInstances);
+        setFilteredInstances(allInstances);
         setError(null);
       })
       .catch(err => {
@@ -192,12 +231,18 @@ export default function AdminInstances() {
   // Calculate the current page's instances
   const indexOfLastInstance = currentPage * itemsPerPage;
   const indexOfFirstInstance = indexOfLastInstance - itemsPerPage;
-  const currentInstances = instances.slice(indexOfFirstInstance, indexOfLastInstance);
+  const currentInstances = filteredInstances.slice(indexOfFirstInstance, indexOfLastInstance);
 
   const isSelectedImageVMSupported = () => {
     const selected = imageOptions.find(img => img.value === form.imageAlias);
     if (!selected) return false;
     return /ubuntu/i.test(selected.label) || /ubuntu/i.test(selected.value);
+  };
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setTypeFilter('all');
+    setStatusFilter('all');
   };
 
   return (
@@ -461,7 +506,74 @@ export default function AdminInstances() {
         
         <div className="bg-gray-800 rounded-lg shadow-md border border-gray-700 overflow-hidden">
           <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-medium text-white">All Instances</h2>
+            <div className="flex flex-wrap items-center justify-between">
+              <h2 className="text-lg font-medium text-white">All Instances</h2>
+              
+              {/* Filtering and search controls */}
+              <div className="flex items-center gap-3 mt-0 md:mt-0">
+                <div className="w-44 md:w-52 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search instances"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-md pl-10 pr-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-white"
+                  />
+                </div>
+                
+                <div className="relative inline-block">
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="appearance-none bg-gray-700 border border-gray-600 rounded-md pl-3 pr-8 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-white cursor-pointer"
+                  >
+                    <option value="all">All Types</option>
+                    <option value="virtual-machine">VM</option>
+                    <option value="container">Container</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+
+                <div className="relative inline-block">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="appearance-none bg-gray-700 border border-gray-600 rounded-md pl-3 pr-8 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-white cursor-pointer"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="Running">Running</option>
+                    <option value="Stopped">Stopped</option>
+                    <option value="Frozen">Frozen</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+                
+                {(searchTerm || typeFilter !== 'all' || statusFilter !== 'all') && (
+                  <button
+                    onClick={clearFilters}
+                    className="inline-flex items-center px-3 py-1.5 border border-gray-600 rounded-md text-sm text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-white transition-colors cursor-pointer"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
           
           {loading ? (
@@ -472,7 +584,7 @@ export default function AdminInstances() {
               </div>
               <p className="text-gray-400 mt-3">Loading instances...</p>
             </div>
-          ) : instances.length === 0 ? (
+          ) : filteredInstances.length === 0 ? (
             <div className="p-8 text-center">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-600 mb-4" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M5.507 4.048A3 3 0 0 1 7.785 3h8.43a3 3 0 0 1 2.278 1.048l1.722 2.008A4.533 4.533 0 0 0 19.5 6h-15c-.243 0-.482.02-.715.056l1.722-2.008Z" />
@@ -557,13 +669,13 @@ export default function AdminInstances() {
           <div className="px-4 py-3 border-t border-gray-700 flex items-center justify-between">
             <div className="text-sm text-gray-400">
               Showing <span className="font-medium text-white">
-                {instances.length > 0 ? `${indexOfFirstInstance + 1}-${Math.min(indexOfLastInstance, instances.length)}` : '0'}
-              </span> of <span className="font-medium text-white">{instances.length}</span> instances
+                {filteredInstances.length > 0 ? `${indexOfFirstInstance + 1}-${Math.min(indexOfLastInstance, filteredInstances.length)}` : '0'}
+              </span> of <span className="font-medium text-white">{filteredInstances.length}</span> instances
             </div>
             <div className="flex space-x-1">
               <button 
                 className={`px-2 py-1 border border-gray-600 rounded-md text-sm ${
-                  currentPage === 1 ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700'
+                  currentPage === 1 ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700 cursor-pointer'
                 }`} 
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
@@ -576,7 +688,7 @@ export default function AdminInstances() {
                   className={`px-2 py-1 border ${
                     currentPage === page 
                       ? 'border-white bg-gray-700 text-white' 
-                      : 'border-gray-600 text-gray-400 hover:bg-gray-700'
+                      : 'border-gray-600 text-gray-400 hover:bg-gray-700 cursor-pointer'
                   } rounded-md text-sm`}
                   onClick={() => handlePageChange(page)}
                 >
@@ -585,7 +697,7 @@ export default function AdminInstances() {
               ))}
               <button 
                 className={`px-2 py-1 border border-gray-600 rounded-md text-sm ${
-                  currentPage === totalPages ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700'
+                  currentPage === totalPages ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700 cursor-pointer'
                 }`} 
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}

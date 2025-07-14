@@ -21,6 +21,10 @@ function setupAuth(router) {
         match = password_hash === user.password_hash;
       }
       if (!match) return res.status(401).json({ error: 'Invalid username or password.' });
+      if (user.two_fa_enabled) {
+        // 2FA required, do not return token yet
+        return res.json({ twofa_required: true, user_id: user.id });
+      }
       const token = jwt.sign({ id: user.id, username: user.username, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '10m' });
       res.json({ success: true, token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
     });

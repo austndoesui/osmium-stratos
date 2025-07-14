@@ -34,7 +34,10 @@ db.serialize(() => {
     username TEXT UNIQUE NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'user'
+    role TEXT NOT NULL DEFAULT 'user',
+    two_fa_enabled INTEGER DEFAULT 0,
+    two_fa_secret TEXT,
+    recovery_codes TEXT
   )`);
 
   db.run(`CREATE TABLE IF NOT EXISTS instances (
@@ -79,6 +82,17 @@ db.serialize(() => {
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (instance_id) REFERENCES instances(id),
     FOREIGN KEY (host_id) REFERENCES host(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    title TEXT,
+    message TEXT,
+    type TEXT,
+    is_read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
   )`);
 });
 

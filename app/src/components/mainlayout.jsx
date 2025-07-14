@@ -5,6 +5,7 @@ import { AuthContext } from '../App';
 export default function MainLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [pageLoading, setPageLoading] = useState(true);
   const { user, logout } = useContext(AuthContext);
@@ -15,16 +16,13 @@ export default function MainLayout({ children }) {
 
   useEffect(() => {
     if (location.pathname === '/auth') return;
-    
     setPageLoading(true);
     if (loadingTimeoutRef.current) {
       clearTimeout(loadingTimeoutRef.current);
     }
-    
     loadingTimeoutRef.current = setTimeout(() => {
       setPageLoading(false);
     }, 500);
-
     return () => {
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
@@ -37,42 +35,34 @@ export default function MainLayout({ children }) {
     return `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(seed)}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
   };
 
-  const notifications = [
-    { 
-      id: 1, 
-      title: 'Instance Started', 
-      message: 'Your instance "web-server-01" has started successfully', 
-      time: '5 min ago',
-      read: false
-    },
-    { 
-      id: 2, 
-      title: 'Storage Alert', 
-      message: 'Instance "db-server-01" is running low on disk space (85%)', 
-      time: '1 hour ago',
-      read: false
-    },
-    { 
-      id: 3, 
-      title: 'Maintenance Scheduled', 
-      message: 'System maintenance scheduled for tomorrow at 02:00 UTC', 
-      time: '3 hours ago',
-      read: true
-    }
-  ];
-
   useEffect(() => {
     function handleClickOutside(event) {
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
         setNotificationsOpen(false);
       }
     }
-    
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [notificationRef]);
+
+  // Fetch notifications when tray is opened
+  useEffect(() => {
+    if (notificationsOpen && user) {
+      const token = localStorage.getItem('jwt');
+      fetch('/api/notifications', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+        .then(res => res.json())
+        .then(data => {
+          setNotifications(Array.isArray(data) ? data : []);
+        })
+        .catch(() => setNotifications([]));
+    }
+  }, [notificationsOpen, user]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -81,6 +71,18 @@ export default function MainLayout({ children }) {
 
   const isActive = (path) => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
+  };
+
+  const markAllAsRead = async () => {
+    const token = localStorage.getItem('jwt');
+    const unread = notifications.filter(n => !n.is_read);
+    await Promise.all(unread.map(n =>
+      fetch(`/api/notifications/${n.id}/read`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+    ));
+    setNotifications(notifications.map(n => ({ ...n, is_read: 1 })));
   };
 
   const menuCategories = [
@@ -307,9 +309,9 @@ export default function MainLayout({ children }) {
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                       <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
                     </svg>
-                    {notifications.filter(n => !n.read).length > 0 && (
+                    {notifications.filter(n => !n.is_read).length > 0 && (
                       <span className="absolute top-0 right-0 -mt-1 -mr-1 flex items-center justify-center h-4 w-4 rounded-full bg-red-500 text-xs font-bold text-white">
-                        {notifications.filter(n => !n.read).length}
+                        {notifications.filter(n => !n.is_read).length}
                       </span>
                     )}
                   </button>
@@ -319,7 +321,7 @@ export default function MainLayout({ children }) {
                       <div className="py-2">
                         <div className="px-4 py-2 border-b border-gray-700 flex justify-between items-center">
                           <h3 className="text-sm font-medium text-white">Notifications</h3>
-                          <button className="text-xs text-blue-400 hover:text-blue-300">
+                          <button className="text-xs text-blue-400 hover:text-blue-300" onClick={markAllAsRead}>
                             Mark all as read
                           </button>
                         </div>
@@ -332,11 +334,11 @@ export default function MainLayout({ children }) {
                             notifications.map((notification) => (
                               <div 
                                 key={notification.id} 
-                                className={`px-4 py-3 hover:bg-gray-700 ${!notification.read ? 'bg-gray-750' : ''}`}
+                                className={`px-4 py-3 hover:bg-gray-700 ${!notification.is_read ? 'bg-gray-750' : ''}`}
                               >
                                 <div className="flex justify-between items-start">
                                   <p className="text-sm font-medium text-white">{notification.title}</p>
-                                  <span className="text-xs text-gray-400">{notification.time}</span>
+                                  <span className="text-xs text-gray-400">{new Date(notification.created_at).toLocaleString()}</span>
                                 </div>
                                 <p className="text-xs text-gray-300 mt-1">{notification.message}</p>
                               </div>
@@ -396,7 +398,7 @@ export default function MainLayout({ children }) {
                 <Link
                   to={location.pathname.replace(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/network$|\/snapshots$/, '')}
                   className={`whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm ${
-                    !location.pathname.match(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/network$|\/snapshots$/) 
+                    !location.pathname.match(/\/console$|\/resize$|\/backups$|\/history$|\/destroy$|\/metrics$|\/overview$|\/network$|\/snapshots$/) 
                       ? 'border-white text-white' 
                       : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
                   }`}
