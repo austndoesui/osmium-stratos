@@ -292,7 +292,60 @@ export default function AdminUsers() {
         
         <div className="bg-gray-800 rounded-lg shadow-md border border-gray-700 overflow-hidden">
           <div className="p-4 border-b border-gray-700">
+<<<<<<< Updated upstream
             <h2 className="text-lg font-medium text-white">All Users</h2>
+=======
+            <div className="flex flex-wrap items-center justify-between">
+            <h2 className="text-lg font-medium text-white">All Users</h2>
+              
+              {/* Filtering and search controls */}
+              <div className="flex items-center gap-3 mt-0 md:mt-0">
+                <div className="w-44 md:w-52 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search users"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-md pl-10 pr-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-white"
+                  />
+                </div>
+                
+                <div className="relative inline-block">
+                  <select
+                    value={roleFilter}
+                    onChange={(e) => setRoleFilter(e.target.value)}
+                    className="appearance-none bg-gray-700 border border-gray-600 rounded-md pl-3 pr-8 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-white cursor-pointer"
+                  >
+                    <option value="all">All Roles</option>
+                    <option value="admin">Admin</option>
+                    <option value="user">User</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+                
+                {(searchTerm || roleFilter !== 'all') && (
+                  <button
+                    onClick={clearFilters}
+                    className="inline-flex items-center px-3 py-1.5 border border-gray-600 rounded-md text-sm text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-white transition-colors cursor-pointer"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+>>>>>>> Stashed changes
           </div>
           
           {error && (

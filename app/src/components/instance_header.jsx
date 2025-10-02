@@ -32,6 +32,7 @@ export default function InstanceHeader({
     if (path.endsWith('/history')) return 'History';
     if (path.endsWith('/network')) return 'Network';
     if (path.endsWith('/snapshots')) return 'Snapshots';
+    if (path.endsWith('/migrate')) return 'Migrate';
     return 'Overview';
   };
 

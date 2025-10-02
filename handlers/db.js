@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const config = require('./config');
@@ -83,3 +84,109 @@ db.serialize(() => {
 });
 
 module.exports = db;
+=======
+const path = require('path');
+const sqlite3 = require('sqlite3').verbose();
+const config = require('./config');
+
+const dbPath = path.join(__dirname, '..', config.database.name);
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('Failed to connect to database:', err.message);
+  }
+});
+
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS host (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      address TEXT NOT NULL,
+      description TEXT,
+      cert TEXT,
+      key TEXT,
+      ca TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`CREATE TABLE IF NOT EXISTS images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    value TEXT NOT NULL
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    two_fa_enabled INTEGER DEFAULT 0,
+    two_fa_secret TEXT,
+    recovery_codes TEXT
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS instances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    host_id INTEGER NOT NULL,
+    lxd_name TEXT NOT NULL,
+    user_id INTEGER,
+    cpu INTEGER,
+    ram INTEGER,
+    disk INTEGER,
+    image_alias TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (host_id) REFERENCES host(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS port_forwards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    instance_id INTEGER NOT NULL,
+    host_id INTEGER NOT NULL,
+    device_name TEXT NOT NULL,
+    host_ip TEXT NOT NULL,
+    host_port INTEGER NOT NULL,
+    container_port INTEGER NOT NULL,
+    protocol TEXT NOT NULL DEFAULT 'tcp',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instance_id) REFERENCES instances(id),
+    FOREIGN KEY (host_id) REFERENCES host(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT,
+    action TEXT NOT NULL,
+    instance_id INTEGER,
+    instance_name TEXT,
+    host_id INTEGER,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    details TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (instance_id) REFERENCES instances(id),
+    FOREIGN KEY (host_id) REFERENCES host(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    title TEXT,
+    message TEXT,
+    type TEXT,
+    is_read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  )`);
+});
+
+module.exports = db;
+>>>>>>> Stashed changes

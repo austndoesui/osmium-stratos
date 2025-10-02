@@ -137,7 +137,7 @@ function handleConsoleWebSocket(server, req, socket, head, hostId, instanceName)
                       stdoutWs.on('open', () => {
                         stdinWs.on('open', () => {
                           // Relay data
-                          ws.on('message', (msg) => {
+                          socket.on('message', (msg) => {
                             if (stdinWs.readyState === WebSocket.OPEN) stdinWs.send(msg);
                           });
                           // Handle close
@@ -146,11 +146,11 @@ function handleConsoleWebSocket(server, req, socket, head, hostId, instanceName)
                             stdoutWs.close();
                           });
                           stdinWs.on('close', () => {
-                            ws.close();
+                          socket.disconnect(true);
                           });
                         });
                         stdoutWs.on('message', (msg) => {
-                          if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+                          if (socket.connected) socket.emit('message', msg);
                         });
                         stdoutWs.on('close', () => {
                           ws.close();
@@ -188,22 +188,22 @@ function handleConsoleWebSocket(server, req, socket, head, hostId, instanceName)
                         ws.on('message', (msg) => {
                           if (ioWs.readyState === WebSocket.OPEN) ioWs.send(msg);
                         });
-                        ioWs.on('message', (msg) => {
-                          if (ws.readyState === WebSocket.OPEN) ws.send(msg);
-                        });
+                         ioWs.on('message', (msg) => {
+                           if (socket.connected) socket.emit('message', msg);
+                         });
                         // Handle close
                         ws.on('close', () => {
                           ioWs.close();
                           if (controlWs) controlWs.close();
                         });
-                        ioWs.on('close', () => {
-                          ws.close();
-                          if (controlWs) controlWs.close();
-                        });
+                         ioWs.on('close', () => {
+                           socket.disconnect(true);
+                           if (controlWs) controlWs.close();
+                         });
                       });
                     } else {
                       console.error('[LXD Console] No usable fds found');
-                      onFail();
+                onFail(); socket.disconnect(true);
                     }
                   } else if (attempts < maxAttempts) {
                     setTimeout(pollForFds, pollDelay);

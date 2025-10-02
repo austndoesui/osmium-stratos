@@ -10,6 +10,10 @@ import AdminImage from './pages/admin/image';
 import AdminOverview from './pages/admin/overview';
 import AdminUsers from './pages/admin/users';
 import AdminInstances from './pages/admin/instances';
+import AdminSettings from './pages/admin/settings';
+import AdminThemes from './pages/admin/settings/themes';
+import AdminConfig from './pages/admin/settings/config';
+import AdminAdvanced from './pages/admin/settings/advances';
 import InstanceOverview from './pages/instance/overview';
 import Console from './pages/instance/console';
 import Metrics from './pages/instance/metrics';
@@ -18,6 +22,7 @@ import History from './pages/instance/history';
 import Destroy from './pages/instance/destroy';
 import Resize from './pages/instance/resize';
 import Snapshots from './pages/instance/snapshots';
+import Migrate from './pages/instance/migrate';
 import Auth from './pages/auth';
 import Instances from './pages/instances';
 import Account from './pages/account';
@@ -113,6 +118,10 @@ function AppRoutes() {
       <Route path="/admin/image" element={<RequireAdmin><AdminImage /></RequireAdmin>} />
       <Route path="/admin/users" element={<RequireAdmin><AdminUsers /></RequireAdmin>} />
       <Route path="/admin/instances" element={<RequireAdmin><AdminInstances /></RequireAdmin>} />
+      <Route path="/admin/settings" element={<RequireAdmin><AdminSettings /></RequireAdmin>} />
+      <Route path="/admin/settings/config" element={<RequireAdmin><AdminConfig /></RequireAdmin>} />
+      <Route path="/admin/settings/themes" element={<RequireAdmin><AdminThemes /></RequireAdmin>} />
+      <Route path="/admin/settings/advanced" element={<RequireAdmin><AdminAdvanced /></RequireAdmin>} />
       <Route path="/instance/:hostId/:instanceName" element={<RequireAuth><InstanceOverview /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/console" element={<RequireAuth><Console /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/metrics" element={<RequireAuth><Metrics /></RequireAuth>} />
@@ -121,6 +130,7 @@ function AppRoutes() {
       <Route path="/instance/:hostId/:instanceName/destroy" element={<RequireAuth><Destroy /></RequireAuth>} />
       <Route path="/instance/:hostId/:instanceName/resize" element={<RequireAdmin><Resize /></RequireAdmin>} />
       <Route path="/instance/:hostId/:instanceName/snapshots" element={<RequireAuth><Snapshots /></RequireAuth>} />
+      <Route path="/instance/:hostId/:instanceName/migrate" element={<RequireAdmin><Migrate /></RequireAdmin>} />
       {/* Catch-all route for 404 */}
       <Route path="*" element={<NotFound />} />
     </Routes>

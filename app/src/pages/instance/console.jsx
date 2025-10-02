@@ -195,8 +195,8 @@ export default function Console() {
     };
 
     term.onData(data => {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(data);
+      if (socket.connected) {
+        socket.emit('message', data);
       }
     });
 
