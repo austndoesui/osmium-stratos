@@ -1,4 +1,4 @@
-import MainLayout from '../../components/mainlayout';
+﻿import MainLayout from '../../components/mainlayout';
 import { Link } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { useNotification } from '../../providers/NotificationProvider';
@@ -292,9 +292,7 @@ export default function AdminUsers() {
         
         <div className="bg-gray-800 rounded-lg shadow-md border border-gray-700 overflow-hidden">
           <div className="p-4 border-b border-gray-700">
-<<<<<<< Updated upstream
             <h2 className="text-lg font-medium text-white">All Users</h2>
-=======
             <div className="flex flex-wrap items-center justify-between">
             <h2 className="text-lg font-medium text-white">All Users</h2>
               
@@ -345,7 +343,6 @@ export default function AdminUsers() {
                 )}
               </div>
             </div>
->>>>>>> Stashed changes
           </div>
           
           {error && (

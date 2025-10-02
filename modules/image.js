@@ -1,18 +1,37 @@
-const db = require('../handlers/db');
+const { prisma } = require('../handlers/prisma');
 const https = require('https');
 
-function getImages(callback) {
-  db.all('SELECT * FROM images', [], callback);
+async function getImages(callback) {
+  try {
+    const images = await prisma.image.findMany({
+      orderBy: { id: 'asc' }
+    });
+    callback(null, images);
+  } catch (error) {
+    callback(error);
+  }
 }
 
-function addImage({ label, value }, callback) {
-  db.run('INSERT INTO images (label, value) VALUES (?, ?)', [label, value], function (err) {
-    callback(err, { id: this?.lastID });
-  });
+async function addImage({ label, value }, callback) {
+  try {
+    const image = await prisma.image.create({
+      data: { label, value }
+    });
+    callback(null, { id: image.id });
+  } catch (error) {
+    callback(error);
+  }
 }
 
-function deleteImage(id, callback) {
-  db.run('DELETE FROM images WHERE id = ?', [id], callback);
+async function deleteImage(id, callback) {
+  try {
+    await prisma.image.delete({
+      where: { id: parseInt(id) }
+    });
+    callback(null);
+  } catch (error) {
+    callback(error);
+  }
 }
 
 function parseImageSource(imageAlias) {

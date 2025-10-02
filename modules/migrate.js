@@ -1,4 +1,4 @@
-const db = require('../handlers/db');
+const { prisma } = require('../handlers/prisma');
 const hosts = require('./hosts');
 const instance = require('./instance');
 

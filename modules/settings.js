@@ -1,29 +1,44 @@
-const db = require('../handlers/db');
+const { prisma } = require('../handlers/prisma');
 
-function getSetting(key, cb) {
-  db.get('SELECT value FROM settings WHERE key = ?', [key], (err, row) => {
-    if (err) return cb(err);
-    cb(null, row ? row.value : null);
-  });
+async function getSetting(key) {
+  try {
+    const setting = await prisma.setting.findUnique({
+      where: { key }
+    });
+    return setting ? setting.value : null;
+  } catch (error) {
+    throw error;
+  }
 }
 
-function setSetting(key, value, cb) {
-  db.run(
-    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-    [key, value],
-    cb
-  );
+async function setSetting(key, value) {
+  try {
+    await prisma.setting.upsert({
+      where: { key },
+      update: { value },
+      create: { key, value }
+    });
+  } catch (error) {
+    throw error;
+  }
 }
 
-function getAllSettings(cb) {
-  db.all('SELECT key, value FROM settings', (err, rows) => {
-    if (err) return cb(err);
-    const settings = {};
-    rows.forEach(row => { settings[row.key] = row.value; });
-    if (!settings.panel_name) settings.panel_name = 'Osmium';
-    if (!settings.footer_text) settings.footer_text = '';
-    cb(null, settings);
-  });
+async function getAllSettings() {
+  try {
+    const settings = await prisma.setting.findMany();
+    const settingsObj = {};
+    settings.forEach(setting => {
+      settingsObj[setting.key] = setting.value;
+    });
+    
+    // Set defaults if not exists
+    if (!settingsObj.panel_name) settingsObj.panel_name = 'Osmium';
+    if (!settingsObj.footer_text) settingsObj.footer_text = '';
+    
+    return settingsObj;
+  } catch (error) {
+    throw error;
+  }
 }
 
 module.exports = { getSetting, setSetting, getAllSettings };

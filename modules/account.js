@@ -1,4 +1,4 @@
-const db = require('../handlers/db');
+const { prisma } = require('../handlers/prisma');
 const bcrypt = require('bcrypt');
 
 // Update username and email for a user

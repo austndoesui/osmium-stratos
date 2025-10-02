@@ -6,7 +6,12 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
-    "create-user": "node handlers/cli.js"
+    "create-user": "node handlers/cli.js",
+    "db:migrate": "npx prisma migrate deploy",
+    "db:generate": "npx prisma generate",
+    "db:reset": "npx prisma migrate reset",
+    "db:studio": "npx prisma studio",
+    "migrate-data": "node migrate-data.js"
   },
   "keywords": [
     "vm"
@@ -14,8 +19,10 @@
   "author": "crater",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^6.16.3",
     "axios": "^1.10.0",
     "bcrypt": "^6.0.0",
+    "chalk": "^4.1.2",
     "cheerio": "^1.1.0",
     "express": "^4.18.2",
     "express-session": "^1.18.1",
@@ -23,14 +30,12 @@
     "jsonwebtoken": "^9.0.2",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
-<<<<<<< Updated upstream
-=======
+    "pg": "^8.16.3",
+    "prisma": "^6.16.3",
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "speakeasy": "^2.0.0",
->>>>>>> Stashed changes
-    "sqlite3": "^5.1.7",
     "toml": "^3.0.0",
     "ws": "^8.18.3"
   }

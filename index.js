@@ -1,7 +1,7 @@
 const express = require("express");
 const path = require("path");
 const config = require("./handlers/config");
-const db = require("./handlers/db");
+const { initializeDatabase } = require("./handlers/prisma");
 const router = require("./handlers/router");
 const http = require("http");
 const websocket = require("./modules/websocket");
@@ -34,13 +34,18 @@ app.get("*", (req, res) => {
 const server = http.createServer(app);
 websocket.setupWebSocketServer(server);
 
-server.listen(PORT, () => {
-  // Clear console for clean startup
-  console.clear();
+// Initialize database connection before starting server
+async function startServer() {
+  try {
+    await initializeDatabase();
+    
+    server.listen(PORT, () => {
+      // Clear console for clean startup
+      console.clear();
 
-  // Modern ASCII art logo
-  console.log(
-    chalk.cyan.bold(`
+      // Modern ASCII art logo
+      console.log(
+        chalk.cyan.bold(`
     ╔═══════════════════════════════════════════════════════════╗
     ║                                                           ║
     ║   ██████  ███████ ███    ███ ██ ██    ██ ███    ███      ║
@@ -178,7 +183,15 @@ server.listen(PORT, () => {
     ),
   );
   console.log("");
-});
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error.message);
+    process.exit(1);
+  }
+}
+
+// Start the server
+startServer();
 
 // Helper function to get module icons
 function getModuleIcon(module) {

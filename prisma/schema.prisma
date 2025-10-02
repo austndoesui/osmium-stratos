@@ -1,0 +1,138 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Host {
+  id          Int           @id @default(autoincrement())
+  name        String
+  address     String
+  description String?
+  cert        String?
+  key         String?
+  ca          String?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  
+  // Relations
+  instances     Instance[]
+  portForwards  PortForward[]
+  auditLogs     AuditLog[]
+
+  @@map("host")
+}
+
+model Image {
+  id    Int    @id @default(autoincrement())
+  label String
+  value String
+
+  @@map("images")
+}
+
+model User {
+  id              Int      @id @default(autoincrement())
+  username        String   @unique
+  email           String   @unique
+  passwordHash    String   @map("password_hash")
+  role            String   @default("user")
+  twoFaEnabled    Boolean  @default(false) @map("two_fa_enabled")
+  twoFaSecret     String?  @map("two_fa_secret")
+  recoveryCodes   String?  @map("recovery_codes")
+  
+  // Relations
+  instances       Instance[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+
+  @@map("users")
+}
+
+model Instance {
+  id         Int      @id @default(autoincrement())
+  name       String
+  hostId     Int      @map("host_id")
+  lxdName    String   @map("lxd_name")
+  userId     Int?     @map("user_id")
+  cpu        Int?
+  ram        Int?
+  disk       Int?
+  imageAlias String?  @map("image_alias")
+  createdAt  DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  host          Host           @relation(fields: [hostId], references: [id])
+  user          User?          @relation(fields: [userId], references: [id])
+  portForwards  PortForward[]
+  auditLogs     AuditLog[]
+
+  @@map("instances")
+}
+
+model PortForward {
+  id            Int      @id @default(autoincrement())
+  instanceId    Int      @map("instance_id")
+  hostId        Int      @map("host_id")
+  deviceName    String   @map("device_name")
+  hostIp        String   @map("host_ip")
+  hostPort      Int      @map("host_port")
+  containerPort Int      @map("container_port")
+  protocol      String   @default("tcp")
+  createdAt     DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  instance Instance @relation(fields: [instanceId], references: [id])
+  host     Host     @relation(fields: [hostId], references: [id])
+
+  @@map("port_forwards")
+}
+
+model AuditLog {
+  id           Int      @id @default(autoincrement())
+  userId       Int?     @map("user_id")
+  username     String?
+  action       String
+  instanceId   Int?     @map("instance_id")
+  instanceName String?  @map("instance_name")
+  hostId       Int?     @map("host_id")
+  timestamp    DateTime @default(now())
+  details      String?
+  
+  // Relations
+  user     User?     @relation(fields: [userId], references: [id])
+  instance Instance? @relation(fields: [instanceId], references: [id])
+  host     Host?     @relation(fields: [hostId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  title     String?
+  message   String?
+  type      String?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model Setting {
+  key   String @id
+  value String?
+
+  @@map("settings")
+}

@@ -1,12 +1,6 @@
-<<<<<<< Updated upstream
-import { useState, useContext } from 'react';
-import MainLayout from '../components/mainlayout';
-import { AuthContext } from '../App';
-=======
-import { useState, useContext, useEffect } from "react";
+﻿import { useState, useContext, useEffect } from "react";
 import MainLayout from "../components/mainlayout";
 import { AuthContext } from "../App";
->>>>>>> Stashed changes
 
 export default function Account() {
   const { user, logout } = useContext(AuthContext);
@@ -20,8 +14,6 @@ export default function Account() {
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-<<<<<<< Updated upstream
-=======
 
   // 2FA states
   const [isTwoFactorEnabled, setIsTwoFactorEnabled] = useState(false);
@@ -53,7 +45,6 @@ export default function Account() {
 
     fetchTwoFactorStatus();
   }, []);
->>>>>>> Stashed changes
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -63,8 +54,6 @@ export default function Account() {
     }));
   };
 
-<<<<<<< Updated upstream
-=======
   // Handle 2FA code input change
   const handleVerificationCodeChange = (e) => {
     setVerificationCode(e.target.value);
@@ -181,7 +170,6 @@ export default function Account() {
     }
   };
 
->>>>>>> Stashed changes
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -413,9 +401,7 @@ export default function Account() {
             </form>
           </div>
         </div>
-<<<<<<< Updated upstream
         
-=======
 
         {/* Two-Factor Authentication Card */}
         <div className="bg-gray-800 rounded-lg overflow-hidden shadow-md mb-8">
@@ -593,7 +579,6 @@ export default function Account() {
           </div>
         </div>
 
->>>>>>> Stashed changes
         <div className="bg-gray-800 rounded-lg overflow-hidden shadow-md">
           <div className="p-6">
             <h2 className="text-xl font-medium text-white mb-4">Danger Zone</h2>

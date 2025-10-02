@@ -1,31 +1,60 @@
-const db = require('../handlers/db');
+const { prisma } = require('../handlers/prisma');
 const https = require('https');
 const { copyImageToHost: imageCopyImageToHost } = require('./image');
 
 // List all LXD hosts from the database
-function listHosts(callback) {
-  db.all('SELECT * FROM host', [], callback);
+async function listHosts(callback) {
+  try {
+    const hosts = await prisma.host.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    callback(null, hosts);
+  } catch (error) {
+    callback(error);
+  }
 }
 
 // Get a single LXD host by ID
-function getHost(id, callback) {
-  db.get('SELECT * FROM host WHERE id = ?', [id], callback);
+async function getHost(id, callback) {
+  try {
+    const host = await prisma.host.findUnique({
+      where: { id: parseInt(id) }
+    });
+    callback(null, host);
+  } catch (error) {
+    callback(error);
+  }
 }
 
 // Add a new LXD host to the database
-function addHost({ name, address, description, cert, key, ca }, callback) {
-  db.run(
-    `INSERT INTO host (name, address, description, cert, key, ca) VALUES (?, ?, ?, ?, ?, ?)`,
-    [name, address, description, cert, key, ca],
-    function (err) {
-      callback(err, { id: this?.lastID });
-    }
-  );
+async function addHost({ name, address, description, cert, key, ca }, callback) {
+  try {
+    const host = await prisma.host.create({
+      data: {
+        name,
+        address,
+        description,
+        cert,
+        key,
+        ca
+      }
+    });
+    callback(null, { id: host.id });
+  } catch (error) {
+    callback(error);
+  }
 }
 
 // Delete a host from the database by ID
-function deleteHost(id, callback) {
-  db.run('DELETE FROM host WHERE id = ?', [id], callback);
+async function deleteHost(id, callback) {
+  try {
+    await prisma.host.delete({
+      where: { id: parseInt(id) }
+    });
+    callback(null);
+  } catch (error) {
+    callback(error);
+  }
 }
 
 // Poll an LXD operation until it completes (success or error)

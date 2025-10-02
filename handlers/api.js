@@ -1,20 +1,3 @@
-<<<<<<< Updated upstream
-const express = require('express');
-const hosts = require('../modules/hosts');
-const instance = require('../modules/instance');
-const imageModule = require('../modules/image');
-const axios = require('axios');
-const cheerio = require('cheerio');
-const websocket = require('../modules/websocket');
-const { setupAuth } = require('../modules/auth');
-const db = require('./db');
-const { getAllUsers, deleteUserById } = require('./get-users');
-const bcrypt = require('bcrypt');
-const { updateProfile, changePassword } = require('../modules/account');
-const network = require('../modules/network');
-const auditLogs = require('../modules/audit_logs');
-const snapshot = require('../modules/snapshot');
-=======
 const express = require("express");
 const hosts = require("../modules/hosts");
 const instance = require("../modules/instance");
@@ -23,7 +6,7 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const websocket = require("../modules/websocket");
 const { setupAuth } = require("../modules/auth");
-const db = require("./db");
+const { prisma } = require("./prisma");
 const { getAllUsers, deleteUserById } = require("./get-users");
 const bcrypt = require("bcrypt");
 const { updateProfile, changePassword } = require("../modules/account");
@@ -38,15 +21,12 @@ const { migrateInstance } = require("../modules/migrate");
 const settings = require("../modules/settings");
 const path = require("path");
 const fs = require("fs");
->>>>>>> Stashed changes
 
 const router = express.Router();
 
 // Apply Passport.js auth
 setupAuth(router);
 
-<<<<<<< Updated upstream
-=======
 // 2FA login verification endpoint
 router.post("/2fa/verify-login", async (req, res) => {
   const { user_id, token } = req.body;
@@ -55,10 +35,21 @@ router.post("/2fa/verify-login", async (req, res) => {
       .status(400)
       .json({ error: "User ID and 2FA code are required." });
   }
-  db.get("SELECT * FROM users WHERE id = ?", [user_id], async (err, user) => {
-    if (err || !user) return res.status(401).json({ error: "Invalid user." });
+  
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: user_id }
+    });
+    
+    if (!user) {
+      return res.status(401).json({ error: "Invalid user." });
+    }
+    
     const valid = await verify2FA(user_id, token);
-    if (!valid) return res.status(401).json({ error: "Invalid 2FA code." });
+    if (!valid) {
+      return res.status(401).json({ error: "Invalid 2FA code." });
+    }
+    
     const jwt = require("jsonwebtoken");
     const config = require("./config");
     const JWT_SECRET =
@@ -83,10 +74,11 @@ router.post("/2fa/verify-login", async (req, res) => {
         role: user.role,
       },
     });
-  });
+  } catch (err) {
+    console.error('2FA verify login error:', err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
-
->>>>>>> Stashed changes
 // ================= HOSTS =================
 router.get("/hosts", (req, res) => {
   hosts.listHosts((err, rows) => {
@@ -583,24 +575,25 @@ router.post(
   },
 );
 
-<<<<<<< Updated upstream
-=======
 // 2FA endpoints
-router.get("/account/2fa/status", router.ensureAuthenticated, (req, res) => {
+router.get("/account/2fa/status", router.ensureAuthenticated, async (req, res) => {
   const userId = req.user.id;
-  db.get(
-    "SELECT two_fa_enabled FROM users WHERE id = ?",
-    [userId],
-    (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: "Failed to get 2FA status" });
-      }
-      res.json({ enabled: !!user.two_fa_enabled });
-    },
-  );
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { two_fa_enabled: true }
+    });
+    if (!user) {
+      return res.status(500).json({ error: "Failed to get 2FA status" });
+    }
+    res.json({ enabled: !!user.two_fa_enabled });
+  } catch (err) {
+    console.error('2FA status error:', err);
+    res.status(500).json({ error: "Failed to get 2FA status" });
+  }
 });
 
-router.post("/account/2fa/setup", router.ensureAuthenticated, (req, res) => {
+router.post("/account/2fa/setup", router.ensureAuthenticated, async (req, res) => {
   const userId = req.user.id;
   const username = req.user.username;
   const secret = speakeasy.generateSecret({
@@ -615,145 +608,136 @@ router.post("/account/2fa/setup", router.ensureAuthenticated, (req, res) => {
   }
   const recoveryCodesJson = JSON.stringify(recoveryCodes);
 
-  db.run(
-    "UPDATE users SET two_fa_secret = ?, recovery_codes = ?, two_fa_enabled = 0 WHERE id = ?",
-    [secret.base32, recoveryCodesJson, userId],
-    function (err) {
-      if (err) {
-        console.error("2FA Setup DB Error:", err);
-        return res
-          .status(500)
-          .json({ error: "Failed to initialize 2FA setup." });
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        two_fa_secret: secret.base32,
+        recovery_codes: recoveryCodesJson,
+        two_fa_enabled: false
       }
+    });
 
-      qrcode.toDataURL(secret.otpauth_url, (qrCodeErr, qrCodeUrl) => {
-        if (qrCodeErr) {
-          return res.status(500).json({ error: "Failed to generate QR code" });
-        }
-        res.json({
-          secret: secret.base32,
-          qrCode: qrCodeUrl,
-          recoveryCodes: recoveryCodes,
-        });
+    qrcode.toDataURL(secret.otpauth_url, (qrCodeErr, qrCodeUrl) => {
+      if (qrCodeErr) {
+        return res.status(500).json({ error: "Failed to generate QR code" });
+      }
+      res.json({
+        secret: secret.base32,
+        qrCode: qrCodeUrl,
+        recoveryCodes: recoveryCodes,
       });
-    },
-  );
+    });
+  } catch (err) {
+    console.error("2FA Setup DB Error:", err);
+    return res.status(500).json({ error: "Failed to initialize 2FA setup." });
+  }
 });
 
-router.post("/account/2fa/verify", router.ensureAuthenticated, (req, res) => {
-  const { token } = req.body; // Secret is no longer passed from frontend for verify
+router.post("/account/2fa/verify", router.ensureAuthenticated, async (req, res) => {
+  const { token } = req.body;
   const userId = req.user.id;
   if (!token) {
     return res.status(400).json({ error: "Verification code is required." });
   }
 
-  db.get(
-    "SELECT two_fa_secret, recovery_codes FROM users WHERE id = ?",
-    [userId],
-    (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: "Failed to retrieve 2FA data." });
-      }
-      if (!user || !user.two_fa_secret) {
-        return res
-          .status(400)
-          .json({ error: "2FA setup not initiated or already enabled." });
-      }
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { two_fa_secret: true, recovery_codes: true }
+    });
 
-      const verified = speakeasy.totp.verify({
-        secret: user.two_fa_secret,
-        encoding: "base32",
-        token: token,
-        window: 2,
-      });
+    if (!user || !user.two_fa_secret) {
+      return res.status(400).json({ error: "2FA setup not initiated or already enabled." });
+    }
 
-      if (!verified) {
-        return res.status(400).json({ error: "Invalid verification code" });
+    const verified = speakeasy.totp.verify({
+      secret: user.two_fa_secret,
+      encoding: "base32",
+      token: token,
+      window: 2,
+    });
+
+    if (!verified) {
+      return res.status(400).json({ error: "Invalid verification code" });
+    }
+
+    let storedRecoveryCodes = [];
+    try {
+      if (user.recovery_codes) {
+        storedRecoveryCodes = JSON.parse(user.recovery_codes);
       }
+    } catch (parseErr) {
+      console.error("Failed to parse recovery codes:", parseErr);
+    }
 
-      let storedRecoveryCodes = [];
-      try {
-        if (user.recovery_codes) {
-          storedRecoveryCodes = JSON.parse(user.recovery_codes);
-        }
-      } catch (parseErr) {
-        console.error("Failed to parse recovery codes:", parseErr); // Log error but proceed
-      }
+    await prisma.user.update({
+      where: { id: userId },
+      data: { two_fa_enabled: true }
+    });
 
-      db.run(
-        "UPDATE users SET two_fa_enabled = 1 WHERE id = ?",
-        [userId],
-        function (updateErr) {
-          if (updateErr) {
-            return res.status(500).json({ error: "Failed to enable 2FA" });
-          }
-          res.json({
-            success: true,
-            message: "Two-factor authentication enabled successfully!",
-            recoveryCodes: storedRecoveryCodes,
-          });
-        },
-      );
-    },
-  );
+    res.json({
+      success: true,
+      message: "Two-factor authentication enabled successfully!",
+      recoveryCodes: storedRecoveryCodes,
+    });
+  } catch (err) {
+    console.error('2FA verify error:', err);
+    res.status(500).json({ error: "Failed to enable 2FA" });
+  }
 });
 
-router.post("/account/2fa/disable", router.ensureAuthenticated, (req, res) => {
+router.post("/account/2fa/disable", router.ensureAuthenticated, async (req, res) => {
   const userId = req.user.id;
-  db.run(
-    "UPDATE users SET two_fa_secret = NULL, two_fa_enabled = 0, recovery_codes = NULL WHERE id = ?",
-    [userId],
-    function (err) {
-      if (err) {
-        return res.status(500).json({ error: "Failed to disable 2FA" });
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        two_fa_secret: null,
+        two_fa_enabled: false,
+        recovery_codes: null
       }
-      res.json({ success: true, message: "2FA disabled successfully" });
-    },
-  );
+    });
+    res.json({ success: true, message: "2FA disabled successfully" });
+  } catch (err) {
+    console.error('2FA disable error:', err);
+    res.status(500).json({ error: "Failed to disable 2FA" });
+  }
 });
 
-router.post(
-  "/account/2fa/recovery-codes",
-  router.ensureAuthenticated,
-  (req, res) => {
-    const userId = req.user.id;
-    db.get(
-      "SELECT two_fa_enabled FROM users WHERE id = ?",
-      [userId],
-      (err, user) => {
-        if (err) {
-          return res.status(500).json({ error: "Database error" });
-        }
-        if (!user.two_fa_enabled) {
-          return res.status(400).json({ error: "2FA is not enabled" });
-        }
-        const recoveryCodes = [];
-        for (let i = 0; i < 10; i++) {
-          const code = crypto.randomBytes(4).toString("hex").toUpperCase();
-          recoveryCodes.push(code);
-        }
-        const recoveryCodesJson = JSON.stringify(recoveryCodes);
-        db.run(
-          "UPDATE users SET recovery_codes = ? WHERE id = ?",
-          [recoveryCodesJson, userId],
-          function (err) {
-            if (err) {
-              return res
-                .status(500)
-                .json({ error: "Failed to regenerate recovery codes" });
-            }
-            res.json({
-              success: true,
-              recoveryCodes: recoveryCodes,
-            });
-          },
-        );
-      },
-    );
-  },
-);
+router.post("/account/2fa/recovery-codes", router.ensureAuthenticated, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { two_fa_enabled: true }
+    });
 
->>>>>>> Stashed changes
+    if (!user.two_fa_enabled) {
+      return res.status(400).json({ error: "2FA is not enabled" });
+    }
+
+    const recoveryCodes = [];
+    for (let i = 0; i < 10; i++) {
+      const code = crypto.randomBytes(4).toString("hex").toUpperCase();
+      recoveryCodes.push(code);
+    }
+    const recoveryCodesJson = JSON.stringify(recoveryCodes);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { recovery_codes: recoveryCodesJson }
+    });
+
+    res.json({
+      success: true,
+      recoveryCodes: recoveryCodes,
+    });
+  } catch (err) {
+    console.error('Recovery codes error:', err);
+    res.status(500).json({ error: "Failed to regenerate recovery codes" });
+  }
+});
 // ================= INSTANCE UTILS =================
 router.get("/hosts/:id/vms/:name/usage", (req, res) => {
   hosts.getHost(req.params.id, (err, host) => {
@@ -888,15 +872,9 @@ router.get("/hosts/:hostId/vms/:instanceName/snapshots", (req, res) => {
     if (!host) return res.status(404).json({ error: "Host not found" });
     snapshot.listSnapshots(host, req.params.instanceName, (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
-<<<<<<< Updated upstream
-      // Transform to match frontend expectations
-      const transformed = (result || []).map(snap => ({
-        id: snap.name, // Use name as unique id
-=======
 
       const transformed = (result || []).map((snap) => ({
         id: snap.name,
->>>>>>> Stashed changes
         name: snap.name,
         created_at:
           snap.created_at || snap.creation_date || snap.created_at || null,
@@ -950,63 +928,70 @@ router.delete(
   },
 );
 
-<<<<<<< Updated upstream
-=======
 // ================= NOTIFICATIONS =================
-router.get("/notifications", router.ensureAuthenticated, (req, res) => {
-  db.all(
-    "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
-    [req.user.id],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    },
-  );
+router.get("/notifications", router.ensureAuthenticated, async (req, res) => {
+  try {
+    const notifications = await prisma.notification.findMany({
+      where: { user_id: req.user.id },
+      orderBy: { created_at: 'desc' },
+      take: 50
+    });
+    res.json(notifications);
+  } catch (err) {
+    console.error('Notifications error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post(
-  "/notifications/:id/read",
-  router.ensureAuthenticated,
-  (req, res) => {
-    db.run(
-      "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
-      [req.params.id, req.user.id],
-      function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true });
+router.post("/notifications/:id/read", router.ensureAuthenticated, async (req, res) => {
+  try {
+    await prisma.notification.update({
+      where: { 
+        id: parseInt(req.params.id),
+        user_id: req.user.id 
       },
-    );
-  },
-);
+      data: { is_read: true }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Mark notification read error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
-function createNotification({ user_id, title, message, type }) {
-  db.run(
-    "INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)",
-    [user_id, title, message, type || null],
-  );
+async function createNotification({ user_id, title, message, type }) {
+  try {
+    await prisma.notification.create({
+      data: {
+        user_id,
+        title,
+        message,
+        type: type || null
+      }
+    });
+  } catch (err) {
+    console.error('Create notification error:', err);
+  }
 }
 module.exports.createNotification = createNotification;
 
 // ================= INSTANCE MIGRATION =================
-router.post(
-  "/hosts/:sourceHostId/vms/:instanceName/migrate",
-  async (req, res) => {
-    const { sourceHostId, instanceName } = req.params;
-    const { targetHostId } = req.body;
-    if (!targetHostId)
-      return res.status(400).json({ error: "targetHostId is required" });
-    try {
-      const result = await migrateInstance({
-        sourceHostId,
-        targetHostId,
-        instanceName,
-      });
-      res.json(result);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  },
-);
+router.post("/hosts/:sourceHostId/vms/:instanceName/migrate", async (req, res) => {
+  const { sourceHostId, instanceName } = req.params;
+  const { targetHostId } = req.body;
+  if (!targetHostId)
+    return res.status(400).json({ error: "targetHostId is required" });
+  try {
+    const result = await migrateInstance({
+      sourceHostId,
+      targetHostId,
+      instanceName,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ================= SETTINGS =================
 router.get("/settings", (req, res) => {
@@ -1038,17 +1023,22 @@ router.post("/settings", router.ensureAuthenticated, (req, res) => {
     .catch((err) => res.status(500).json({ error: err.message }));
 });
 
-router.post("/settings/reset", router.ensureAuthenticated, (req, res) => {
+router.post("/settings/reset", router.ensureAuthenticated, async (req, res) => {
   if (req.user.role !== "admin")
     return res.status(403).json({ error: "Forbidden" });
-  db.run(
-    "DELETE FROM settings WHERE key IN ('panel_name', 'footer_text', 'logo_url')",
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true });
-    },
-  );
+  
+  try {
+    await prisma.setting.deleteMany({
+      where: {
+        key: {
+          in: ['panel_name', 'footer_text', 'logo_url']
+        }
+      }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Settings reset error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
-
->>>>>>> Stashed changes
 module.exports = router;

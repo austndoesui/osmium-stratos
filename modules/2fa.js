@@ -1,38 +1,58 @@
-const speakeasy = require('speakeasy');
-const db = require('../handlers/db');
+const speakeasy = require("speakeasy");
+const { prisma } = require("../handlers/prisma");
 
-function verify2FA(userId, token) {
-  return new Promise((resolve, reject) => {
-    db.get('SELECT two_fa_secret, recovery_codes FROM users WHERE id = ? AND two_fa_enabled = 1', [userId], (err, user) => {
-      if (err) {
-        return reject(err);
+async function verify2FA(userId, token) {
+  try {
+    const user = await prisma.user.findFirst({
+      where: { 
+        id: userId, 
+        twoFaEnabled: true 
+      },
+      select: {
+        twoFaSecret: true,
+        recoveryCodes: true
       }
-      if (!user) {
-        return resolve(false);
-      }
-      if (user.recovery_codes) {
-        const recoveryCodes = JSON.parse(user.recovery_codes);
+    });
+
+    if (!user) {
+      return false;
+    }
+
+    // Check if token is a recovery code
+    if (user.recoveryCodes) {
+      try {
+        const recoveryCodes = JSON.parse(user.recoveryCodes);
         const codeIndex = recoveryCodes.indexOf(token.toUpperCase());
         if (codeIndex !== -1) {
+          // Remove used recovery code
           recoveryCodes.splice(codeIndex, 1);
           const updatedCodes = JSON.stringify(recoveryCodes);
-          db.run('UPDATE users SET recovery_codes = ? WHERE id = ?', [updatedCodes, userId], (updateErr) => {
-            if (updateErr) {
-              console.error('Failed to update recovery codes:', updateErr);
-            }
+          
+          await prisma.user.update({
+            where: { id: userId },
+            data: { recoveryCodes: updatedCodes }
           });
-          return resolve(true);
+          
+          return true;
         }
+      } catch (parseErr) {
+        console.error('Failed to parse recovery codes:', parseErr);
       }
-      const verified = speakeasy.totp.verify({
-        secret: user.two_fa_secret,
-        encoding: 'base32',
-        token: token,
-        window: 2
-      });
-      resolve(verified);
+    }
+
+    // Verify TOTP token
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFaSecret,
+      encoding: 'base32',
+      token: token,
+      window: 2
     });
-  });
+
+    return verified;
+  } catch (err) {
+    console.error('2FA verification error:', err);
+    return false;
+  }
 }
 
 module.exports = { verify2FA };

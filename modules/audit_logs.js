@@ -1,4 +1,4 @@
-const db = require('../handlers/db');
+const { prisma } = require('../handlers/prisma');
 
 function addAuditLog({ user_id, username, action, instance_id, instance_name, host_id, details }) {
   let detailsStr = null;

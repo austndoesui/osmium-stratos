@@ -9,3 +9,4 @@ osmium.db
 .DS_Store
 *.log
 .env 
+/app/generated/prisma
