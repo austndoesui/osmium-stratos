@@ -492,28 +492,30 @@ router.post("/register", async (req, res) => {
     const hash = password_hash || (await bcrypt.hash(password, 10));
     const userRole =
       role && (role === "admin" || role === "user") ? role : "user";
-    db.run(
-      "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
-      [username, email, hash, userRole],
-      function (err) {
-        if (err) {
-          if (err.message.includes("UNIQUE constraint failed")) {
-            return res
-              .status(409)
-              .json({ error: "Username or email already exists." });
-          }
-          return res.status(500).json({ error: "Database error." });
-        }
-        res.status(201).json({
-          success: true,
-          id: this.lastID,
-          username,
-          email,
-          role: userRole,
-        });
+    
+    const user = await prisma.user.create({
+      data: {
+        username,
+        email,
+        passwordHash: hash,
+        role: userRole,
       },
-    );
+    });
+
+    res.status(201).json({
+      success: true,
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+    });
   } catch (e) {
+    if (e.code === 'P2002') {
+      return res
+        .status(409)
+        .json({ error: "Username or email already exists." });
+    }
+    console.error('Registration error:', e);
     res.status(500).json({ error: "Server error." });
   }
 });
@@ -581,12 +583,12 @@ router.get("/account/2fa/status", router.ensureAuthenticated, async (req, res) =
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { two_fa_enabled: true }
+      select: { twoFaEnabled: true }
     });
     if (!user) {
       return res.status(500).json({ error: "Failed to get 2FA status" });
     }
-    res.json({ enabled: !!user.two_fa_enabled });
+    res.json({ enabled: !!user.twoFaEnabled });
   } catch (err) {
     console.error('2FA status error:', err);
     res.status(500).json({ error: "Failed to get 2FA status" });
@@ -612,9 +614,9 @@ router.post("/account/2fa/setup", router.ensureAuthenticated, async (req, res) =
     await prisma.user.update({
       where: { id: userId },
       data: {
-        two_fa_secret: secret.base32,
-        recovery_codes: recoveryCodesJson,
-        two_fa_enabled: false
+        twoFaSecret: secret.base32,
+        recoveryCodes: recoveryCodesJson,
+        twoFaEnabled: false
       }
     });
 
@@ -644,15 +646,15 @@ router.post("/account/2fa/verify", router.ensureAuthenticated, async (req, res) 
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { two_fa_secret: true, recovery_codes: true }
+      select: { twoFaSecret: true, recoveryCodes: true }
     });
 
-    if (!user || !user.two_fa_secret) {
+    if (!user || !user.twoFaSecret) {
       return res.status(400).json({ error: "2FA setup not initiated or already enabled." });
     }
 
     const verified = speakeasy.totp.verify({
-      secret: user.two_fa_secret,
+      secret: user.twoFaSecret,
       encoding: "base32",
       token: token,
       window: 2,
@@ -664,8 +666,8 @@ router.post("/account/2fa/verify", router.ensureAuthenticated, async (req, res) 
 
     let storedRecoveryCodes = [];
     try {
-      if (user.recovery_codes) {
-        storedRecoveryCodes = JSON.parse(user.recovery_codes);
+      if (user.recoveryCodes) {
+        storedRecoveryCodes = JSON.parse(user.recoveryCodes);
       }
     } catch (parseErr) {
       console.error("Failed to parse recovery codes:", parseErr);
@@ -673,7 +675,7 @@ router.post("/account/2fa/verify", router.ensureAuthenticated, async (req, res) 
 
     await prisma.user.update({
       where: { id: userId },
-      data: { two_fa_enabled: true }
+      data: { twoFaEnabled: true }
     });
 
     res.json({
@@ -693,9 +695,9 @@ router.post("/account/2fa/disable", router.ensureAuthenticated, async (req, res)
     await prisma.user.update({
       where: { id: userId },
       data: {
-        two_fa_secret: null,
-        two_fa_enabled: false,
-        recovery_codes: null
+        twoFaSecret: null,
+        twoFaEnabled: false,
+        recoveryCodes: null
       }
     });
     res.json({ success: true, message: "2FA disabled successfully" });
@@ -710,10 +712,10 @@ router.post("/account/2fa/recovery-codes", router.ensureAuthenticated, async (re
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { two_fa_enabled: true }
+      select: { twoFaEnabled: true }
     });
 
-    if (!user.two_fa_enabled) {
+    if (!user.twoFaEnabled) {
       return res.status(400).json({ error: "2FA is not enabled" });
     }
 
@@ -726,7 +728,7 @@ router.post("/account/2fa/recovery-codes", router.ensureAuthenticated, async (re
 
     await prisma.user.update({
       where: { id: userId },
-      data: { recovery_codes: recoveryCodesJson }
+      data: { recoveryCodes: recoveryCodesJson }
     });
 
     res.json({

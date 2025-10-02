@@ -12,6 +12,8 @@ export default function AdminUsers() {
   const [submitting, setSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
   const itemsPerPage = 10;
   const modalRef = useRef(null);
   const buttonRef = useRef(null);
@@ -38,10 +40,24 @@ export default function AdminUsers() {
   }, [showModal]);
 
   useEffect(() => {
-    if (users.length > 0) {
-      setTotalPages(Math.ceil(users.length / itemsPerPage));
+    // Calculate total pages based on filtered users
+    const filteredUsers = users.filter(user => {
+      const matchesSearch = searchTerm === '' || 
+        user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+      
+      return matchesSearch && matchesRole;
+    });
+    
+    setTotalPages(Math.ceil(filteredUsers.length / itemsPerPage) || 1);
+    
+    // Reset to first page if current page is beyond available pages
+    if (currentPage > Math.ceil(filteredUsers.length / itemsPerPage)) {
+      setCurrentPage(1);
     }
-  }, [users]);
+  }, [users, searchTerm, roleFilter, currentPage, itemsPerPage]);
 
   const fetchUsers = () => {
     setLoading(true);
@@ -133,10 +149,27 @@ export default function AdminUsers() {
     setCurrentPage(page);
   };
 
-  // Calculate the current page's users
+  const clearFilters = () => {
+    setSearchTerm('');
+    setRoleFilter('all');
+    setCurrentPage(1);
+  };
+
+  // Filter users based on search term and role
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = searchTerm === '' || 
+      user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    
+    return matchesSearch && matchesRole;
+  });
+
+  // Calculate the current page's users from filtered results
   const indexOfLastUser = currentPage * itemsPerPage;
   const indexOfFirstUser = indexOfLastUser - itemsPerPage;
-  const currentUsers = users.slice(indexOfFirstUser, indexOfLastUser);
+  const currentUsers = filteredUsers.slice(indexOfFirstUser, indexOfFirstUser + itemsPerPage);
 
   return (
     <MainLayout>
