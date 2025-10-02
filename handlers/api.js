@@ -1,20 +1,3 @@
-<<<<<<< Updated upstream
-const express = require('express');
-const hosts = require('../modules/hosts');
-const instance = require('../modules/instance');
-const imageModule = require('../modules/image');
-const axios = require('axios');
-const cheerio = require('cheerio');
-const websocket = require('../modules/websocket');
-const { setupAuth } = require('../modules/auth');
-const db = require('./db');
-const { getAllUsers, deleteUserById } = require('./get-users');
-const bcrypt = require('bcrypt');
-const { updateProfile, changePassword } = require('../modules/account');
-const network = require('../modules/network');
-const auditLogs = require('../modules/audit_logs');
-const snapshot = require('../modules/snapshot');
-=======
 const express = require("express");
 const hosts = require("../modules/hosts");
 const instance = require("../modules/instance");
@@ -38,15 +21,12 @@ const { migrateInstance } = require("../modules/migrate");
 const settings = require("../modules/settings");
 const path = require("path");
 const fs = require("fs");
->>>>>>> Stashed changes
 
 const router = express.Router();
 
 // Apply Passport.js auth
 setupAuth(router);
 
-<<<<<<< Updated upstream
-=======
 // 2FA login verification endpoint
 router.post("/2fa/verify-login", async (req, res) => {
   const { user_id, token } = req.body;
@@ -57,7 +37,13 @@ router.post("/2fa/verify-login", async (req, res) => {
   }
   db.get("SELECT * FROM users WHERE id = ?", [user_id], async (err, user) => {
     if (err || !user) return res.status(401).json({ error: "Invalid user." });
-    const valid = await verify2FA(user_id, token);
+    let valid = false;
+    try {
+      valid = await verify2FA(user_id, token);
+    } catch (error) {
+      console.error("2FA verification error:", error);
+      return res.status(500).json({ error: "2FA verification failed." });
+    }
     if (!valid) return res.status(401).json({ error: "Invalid 2FA code." });
     const jwt = require("jsonwebtoken");
     const config = require("./config");
@@ -86,7 +72,6 @@ router.post("/2fa/verify-login", async (req, res) => {
   });
 });
 
->>>>>>> Stashed changes
 // ================= HOSTS =================
 router.get("/hosts", (req, res) => {
   hosts.listHosts((err, rows) => {
@@ -572,6 +557,13 @@ router.post(
   async (req, res) => {
     const userId = req.user.id;
     const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ error: "Current and new passwords are required." });
+    }
+
     try {
       await changePassword(userId, currentPassword, newPassword);
       res.json({ success: true });
@@ -583,168 +575,53 @@ router.post(
   },
 );
 
-<<<<<<< Updated upstream
-=======
-// 2FA endpoints
-router.get("/account/2fa/status", router.ensureAuthenticated, (req, res) => {
-  const userId = req.user.id;
-  db.get(
-    "SELECT two_fa_enabled FROM users WHERE id = ?",
-    [userId],
-    (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: "Failed to get 2FA status" });
-      }
-      res.json({ enabled: !!user.two_fa_enabled });
-    },
-  );
-});
-
-router.post("/account/2fa/setup", router.ensureAuthenticated, (req, res) => {
-  const userId = req.user.id;
-  const username = req.user.username;
-  const secret = speakeasy.generateSecret({
-    name: `Osmium Stratos (${username})`,
-    issuer: "Osmium Stratos",
-    length: 32,
-  });
-  const recoveryCodes = [];
-  for (let i = 0; i < 10; i++) {
-    const code = crypto.randomBytes(4).toString("hex").toUpperCase();
-    recoveryCodes.push(code);
-  }
-  const recoveryCodesJson = JSON.stringify(recoveryCodes);
-
-  db.run(
-    "UPDATE users SET two_fa_secret = ?, recovery_codes = ?, two_fa_enabled = 0 WHERE id = ?",
-    [secret.base32, recoveryCodesJson, userId],
-    function (err) {
-      if (err) {
-        console.error("2FA Setup DB Error:", err);
-        return res
-          .status(500)
-          .json({ error: "Failed to initialize 2FA setup." });
-      }
-
-      qrcode.toDataURL(secret.otpauth_url, (qrCodeErr, qrCodeUrl) => {
-        if (qrCodeErr) {
-          return res.status(500).json({ error: "Failed to generate QR code" });
-        }
-        res.json({
-          secret: secret.base32,
-          qrCode: qrCodeUrl,
-          recoveryCodes: recoveryCodes,
-        });
-      });
-    },
-  );
-});
-
-router.post("/account/2fa/verify", router.ensureAuthenticated, (req, res) => {
-  const { token } = req.body; // Secret is no longer passed from frontend for verify
-  const userId = req.user.id;
-  if (!token) {
-    return res.status(400).json({ error: "Verification code is required." });
-  }
-
-  db.get(
-    "SELECT two_fa_secret, recovery_codes FROM users WHERE id = ?",
-    [userId],
-    (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: "Failed to retrieve 2FA data." });
-      }
-      if (!user || !user.two_fa_secret) {
-        return res
-          .status(400)
-          .json({ error: "2FA setup not initiated or already enabled." });
-      }
-
-      const verified = speakeasy.totp.verify({
-        secret: user.two_fa_secret,
-        encoding: "base32",
-        token: token,
-        window: 2,
-      });
-
-      if (!verified) {
-        return res.status(400).json({ error: "Invalid verification code" });
-      }
-
-      let storedRecoveryCodes = [];
-      try {
-        if (user.recovery_codes) {
-          storedRecoveryCodes = JSON.parse(user.recovery_codes);
-        }
-      } catch (parseErr) {
-        console.error("Failed to parse recovery codes:", parseErr); // Log error but proceed
-      }
-
-      db.run(
-        "UPDATE users SET two_fa_enabled = 1 WHERE id = ?",
-        [userId],
-        function (updateErr) {
-          if (updateErr) {
-            return res.status(500).json({ error: "Failed to enable 2FA" });
-          }
-          res.json({
-            success: true,
-            message: "Two-factor authentication enabled successfully!",
-            recoveryCodes: storedRecoveryCodes,
-          });
-        },
-      );
-    },
-  );
-});
-
-router.post("/account/2fa/disable", router.ensureAuthenticated, (req, res) => {
-  const userId = req.user.id;
-  db.run(
-    "UPDATE users SET two_fa_secret = NULL, two_fa_enabled = 0, recovery_codes = NULL WHERE id = ?",
-    [userId],
-    function (err) {
-      if (err) {
-        return res.status(500).json({ error: "Failed to disable 2FA" });
-      }
-      res.json({ success: true, message: "2FA disabled successfully" });
-    },
-  );
-});
-
 router.post(
-  "/account/2fa/recovery-codes",
+  "/account/2fa/setup",
   router.ensureAuthenticated,
-  (req, res) => {
+  async (req, res) => {
     const userId = req.user.id;
+
     db.get(
-      "SELECT two_fa_enabled FROM users WHERE id = ?",
+      "SELECT two_fa_enabled, two_fa_secret FROM users WHERE id = ?",
       [userId],
-      (err, user) => {
+      async (err, user) => {
         if (err) {
-          return res.status(500).json({ error: "Database error" });
+          return res.status(500).json({ error: "Database error." });
         }
-        if (!user.two_fa_enabled) {
-          return res.status(400).json({ error: "2FA is not enabled" });
+        if (!user) {
+          return res.status(404).json({ error: "User not found." });
         }
-        const recoveryCodes = [];
-        for (let i = 0; i < 10; i++) {
-          const code = crypto.randomBytes(4).toString("hex").toUpperCase();
-          recoveryCodes.push(code);
-        }
-        const recoveryCodesJson = JSON.stringify(recoveryCodes);
+
+        const secret = speakeasy.generateSecret({
+          length: 20,
+          name: `Osmium Stratos (${user.username})`,
+        });
+
+        const recoveryCodes = Array.from({ length: 5 }, () =>
+          crypto.randomBytes(8).toString("hex"),
+        );
+
         db.run(
-          "UPDATE users SET recovery_codes = ? WHERE id = ?",
-          [recoveryCodesJson, userId],
-          function (err) {
-            if (err) {
-              return res
-                .status(500)
-                .json({ error: "Failed to regenerate recovery codes" });
+          "UPDATE users SET two_fa_secret = ?, recovery_codes = ? WHERE id = ?",
+          [secret.base32, JSON.stringify(recoveryCodes), userId],
+          function (updateErr) {
+            if (updateErr) {
+              return res.status(500).json({
+                error: "Failed to save 2FA secret and recovery codes.",
+              });
             }
-            res.json({
-              success: true,
-              recoveryCodes: recoveryCodes,
+
+            qrcode.toDataURL(secret.otpauth_url, (qrErr, imageUrl) => {
+              if (qrErr) {
+                return res
+                  .status(500)
+                  .json({ error: "Failed to generate QR code." });
+              }
+              res.json({
+                secret: secret.base32,
+                qrCodeImage: imageUrl,
+                recoveryCodes: recoveryCodes,
+              });
             });
           },
         );
@@ -753,302 +630,273 @@ router.post(
   },
 );
 
->>>>>>> Stashed changes
-// ================= INSTANCE UTILS =================
-router.get("/hosts/:id/vms/:name/usage", (req, res) => {
-  hosts.getHost(req.params.id, (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.getInstanceUsage(host, req.params.name, (err, usage) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.status(200).json(usage);
-    });
-  });
-});
-
-router.get("/hosts/:id/vms/:name/config", (req, res) => {
-  db.get(
-    "SELECT cpu, ram, disk FROM instances WHERE host_id = ? AND name = ?",
-    [req.params.id, req.params.name],
-    (err, row) => {
-      if (err) return res.status(500).json({ error: "Database error" });
-      if (!row) return res.status(404).json({ error: "Instance not found" });
-      res.json(row);
-    },
-  );
-});
-
-router.get("/hosts/:id/instance-count", (req, res) => {
-  db.get(
-    "SELECT COUNT(*) as count FROM instances WHERE host_id = ?",
-    [req.params.id],
-    (err, row) => {
-      if (err) return res.status(500).json({ error: "Database error" });
-      res.json({ count: row ? row.count : 0 });
-    },
-  );
-});
-
-// ================= NETWORK =================
-router.get("/hosts/:hostId/vms/:instanceName/redirects", (req, res) => {
-  network.listPortForwards(
-    { host_id: req.params.hostId, instance_name: req.params.instanceName },
-    (err, forwards) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(forwards);
-    },
-  );
-});
-
-router.post("/hosts/:hostId/vms/:instanceName/redirects", async (req, res) => {
-  try {
-    const { container_port, protocol } = req.body;
-    if (!container_port)
-      return res.status(400).json({ error: "container_port is required" });
-    const result = await network.addPortForward({
-      host_id: req.params.hostId,
-      instance_name: req.params.instanceName,
-      container_port,
-      protocol: protocol || "tcp",
-    });
-    res.status(201).json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.delete(
-  "/hosts/:hostId/vms/:instanceName/redirects/:id",
+router.post(
+  "/account/2fa/verify",
+  router.ensureAuthenticated,
   async (req, res) => {
+    const userId = req.user.id;
+    const { token, type, recoveryCode } = req.body;
+
+    db.get(
+      "SELECT two_fa_secret, recovery_codes FROM users WHERE id = ?",
+      [userId],
+      async (err, user) => {
+        if (err) {
+          return res.status(500).json({ error: "Database error." });
+        }
+        if (!user || !user.two_fa_secret) {
+          return res
+            .status(400)
+            .json({ error: "2FA not set up for this user." });
+        }
+
+        let isTokenValid = false;
+        let usedRecoveryCode = null;
+
+        if (type === "token" && token) {
+          isTokenValid = speakeasy.totp.verify({
+            secret: user.two_fa_secret,
+            encoding: "base32",
+            token: token,
+            window: 1, // Allow a 30-second window either side of the current time
+          });
+        } else if (type === "recovery" && recoveryCode && user.recovery_codes) {
+          const storedRecoveryCodes = JSON.parse(user.recovery_codes);
+          const index = storedRecoveryCodes.indexOf(recoveryCode);
+          if (index !== -1) {
+            isTokenValid = true;
+            usedRecoveryCode = recoveryCode;
+            storedRecoveryCodes.splice(index, 1); // Remove the used recovery code
+            user.recovery_codes = JSON.stringify(storedRecoveryCodes);
+          }
+        }
+
+        if (isTokenValid) {
+          db.run(
+            "UPDATE users SET two_fa_enabled = 1, recovery_codes = ? WHERE id = ?",
+            [user.recovery_codes, userId],
+            function (updateErr) {
+              if (updateErr) {
+                return res.status(500).json({
+                  error: "Failed to enable 2FA or update recovery codes.",
+                });
+              }
+              res.json({
+                success: true,
+                message: usedRecoveryCode
+                  ? "2FA verified with recovery code. This code has been consumed."
+                  : "2FA verified and enabled.",
+              });
+            },
+          );
+        } else {
+          res.status(401).json({ error: "Invalid 2FA code or recovery code." });
+        }
+      },
+    );
+  },
+);
+
+router.post(
+  "/account/2fa/disable",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const userId = req.user.id;
+
+    db.run(
+      "UPDATE users SET two_fa_enabled = 0, two_fa_secret = NULL, recovery_codes = NULL WHERE id = ?",
+      [userId],
+      function (err) {
+        if (err) {
+          return res.status(500).json({ error: "Failed to disable 2FA." });
+        }
+        res.json({ success: true, message: "2FA disabled." });
+      },
+    );
+  },
+);
+
+router.get(
+  "/account/2fa/status",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const userId = req.user.id;
+
+    db.get(
+      "SELECT two_fa_enabled FROM users WHERE id = ?",
+      [userId],
+      (err, user) => {
+        if (err) {
+          return res.status(500).json({ error: "Database error." });
+        }
+        if (!user) {
+          return res.status(404).json({ error: "User not found." });
+        }
+        res.json({ two_fa_enabled: user.two_fa_enabled === 1 });
+      },
+    );
+  },
+);
+
+router.get(
+  "/account/2fa/recovery-codes",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const userId = req.user.id;
+
+    db.get(
+      "SELECT recovery_codes FROM users WHERE id = ?",
+      [userId],
+      (err, user) => {
+        if (err) {
+          return res.status(500).json({ error: "Database error." });
+        }
+        if (!user || !user.recovery_codes) {
+          return res
+            .status(404)
+            .json({ error: "No recovery codes found for this user." });
+        }
+        res.json({ recoveryCodes: JSON.parse(user.recovery_codes) });
+      },
+    );
+  },
+);
+
+// ================= ADMIN =================
+router.post(
+  "/admin/settings/update",
+  router.ensureAuthenticated,
+  router.ensureAdmin,
+  async (req, res) => {
+    const { key, value } = req.body;
+    if (!key || !value) {
+      return res.status(400).json({ error: "Key and value are required." });
+    }
     try {
-      await network.removePortForward({
-        id: req.params.id,
-        host_id: req.params.hostId,
-        instance_name: req.params.instanceName,
-      });
-      res.status(204).end();
-    } catch (err) {
-      res.status(500).json({ error: err.message });
+      await settings.set(key, value);
+      res.json({ success: true, message: "Setting updated." });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update setting." });
     }
   },
 );
 
-router.post("/hosts/:id/vms/:name/resize", (req, res) => {
-  const { cpu, ram, disk } = req.body;
-  hosts.getHost(req.params.id, (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.resizeInstance(
-      host,
-      req.params.name,
-      { cpu, ram, disk },
-      (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
+router.get(
+  "/admin/settings/:key",
+  router.ensureAuthenticated,
+  router.ensureAdmin,
+  async (req, res) => {
+    try {
+      const value = await settings.get(req.params.key);
+      res.json({ key: req.params.key, value: value });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to retrieve setting." });
+    }
+  },
+);
 
-        db.run(
-          "UPDATE instances SET cpu = ?, ram = ?, disk = ? WHERE host_id = ? AND name = ?",
-          [cpu || null, ram || null, disk || null, host.id, req.params.name],
-          function (dbErr) {
-            if (dbErr) {
-              console.error("Failed to update instance specs in DB:", dbErr);
-
-              return res.status(200).json({
-                ...result,
-                dbWarning: "Specs updated in LXD but not saved in DB.",
-              });
-            }
-            res.status(200).json({ ...result });
-          },
-        );
-      },
-    );
-  });
-});
-
-router.post("/hosts/:hostId/vms/:instanceName/snapshots", (req, res) => {
-  hosts.getHost(req.params.hostId, (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!host) return res.status(404).json({ error: "Host not found" });
-    const { name, stateful } = req.body;
-    snapshot.createSnapshot(
-      host,
-      req.params.instanceName,
-      { name, stateful },
-      (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.status(201).json(result);
-      },
-    );
-  });
-});
-
-router.get("/hosts/:hostId/vms/:instanceName/snapshots", (req, res) => {
-  hosts.getHost(req.params.hostId, (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!host) return res.status(404).json({ error: "Host not found" });
-    snapshot.listSnapshots(host, req.params.instanceName, (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-<<<<<<< Updated upstream
-      // Transform to match frontend expectations
-      const transformed = (result || []).map(snap => ({
-        id: snap.name, // Use name as unique id
-=======
-
-      const transformed = (result || []).map((snap) => ({
-        id: snap.name,
->>>>>>> Stashed changes
-        name: snap.name,
-        created_at:
-          snap.created_at || snap.creation_date || snap.created_at || null,
-        size:
-          typeof snap.size === "number"
-            ? snap.size
-            : snap.stateful && snap.stateful_size
-              ? snap.stateful_size
-              : null,
-      }));
-      res.json(transformed);
-    });
-  });
-});
+router.get(
+  "/admin/settings",
+  router.ensureAuthenticated,
+  router.ensureAdmin,
+  async (req, res) => {
+    try {
+      const allSettings = await settings.getAll();
+      res.json(allSettings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to retrieve all settings." });
+    }
+  },
+);
 
 router.post(
-  "/hosts/:hostId/vms/:instanceName/snapshots/:snapshotName/restore",
-  (req, res) => {
-    hosts.getHost(req.params.hostId, (err, host) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (!host) return res.status(404).json({ error: "Host not found" });
-      snapshot.restoreSnapshot(
-        host,
-        req.params.instanceName,
-        req.params.snapshotName,
-        (err, result) => {
-          if (err) return res.status(500).json({ error: err.message });
-          res.json(result);
-        },
+  "/admin/notifications/create",
+  router.ensureAuthenticated,
+  router.ensureAdmin,
+  async (req, res) => {
+    const { user_id, title, message, type } = req.body;
+    try {
+      const notificationId = await settings.createNotification(
+        user_id,
+        title,
+        message,
+        type,
       );
-    });
+      res.status(201).json({ success: true, id: notificationId });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create notification." });
+    }
   },
 );
 
-router.delete(
-  "/hosts/:hostId/vms/:instanceName/snapshots/:snapshotName",
-  (req, res) => {
-    hosts.getHost(req.params.hostId, (err, host) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (!host) return res.status(404).json({ error: "Host not found" });
-      snapshot.deleteSnapshot(
-        host,
-        req.params.instanceName,
-        req.params.snapshotName,
-        (err, result) => {
-          if (err) return res.status(500).json({ error: err.message });
-          res.status(200).json({ success: true });
-        },
-      );
-    });
-  },
-);
-
-<<<<<<< Updated upstream
-=======
-// ================= NOTIFICATIONS =================
-router.get("/notifications", router.ensureAuthenticated, (req, res) => {
-  db.all(
-    "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
-    [req.user.id],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    },
-  );
+router.get("/notifications", router.ensureAuthenticated, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const notifications = await settings.getNotifications(userId);
+    res.json(notifications);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to retrieve notifications." });
+  }
 });
 
 router.post(
   "/notifications/:id/read",
   router.ensureAuthenticated,
-  (req, res) => {
-    db.run(
-      "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
-      [req.params.id, req.user.id],
-      function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true });
-      },
-    );
-  },
-);
-
-function createNotification({ user_id, title, message, type }) {
-  db.run(
-    "INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)",
-    [user_id, title, message, type || null],
-  );
-}
-module.exports.createNotification = createNotification;
-
-// ================= INSTANCE MIGRATION =================
-router.post(
-  "/hosts/:sourceHostId/vms/:instanceName/migrate",
   async (req, res) => {
-    const { sourceHostId, instanceName } = req.params;
-    const { targetHostId } = req.body;
-    if (!targetHostId)
-      return res.status(400).json({ error: "targetHostId is required" });
+    const userId = req.user.id;
+    const notificationId = req.params.id;
     try {
-      const result = await migrateInstance({
-        sourceHostId,
-        targetHostId,
-        instanceName,
-      });
-      res.json(result);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
+      await settings.markNotificationAsRead(userId, notificationId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to mark notification as read." });
     }
   },
 );
 
-// ================= SETTINGS =================
-router.get("/settings", (req, res) => {
-  settings.getAllSettings((err, all) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(all);
-  });
-});
-
-router.post("/settings", router.ensureAuthenticated, (req, res) => {
-  if (req.user.role !== "admin")
-    return res.status(403).json({ error: "Forbidden" });
-  const updates = req.body;
-  const keys = Object.keys(updates);
-  if (!keys.length)
-    return res.status(400).json({ error: "No settings provided" });
-  Promise.all(
-    keys.map(
-      (key) =>
-        new Promise((resolve, reject) => {
-          settings.setSetting(key, updates[key], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        }),
-    ),
-  )
-    .then(() => res.json({ success: true }))
-    .catch((err) => res.status(500).json({ error: err.message }));
-});
-
-router.post("/settings/reset", router.ensureAuthenticated, (req, res) => {
-  if (req.user.role !== "admin")
-    return res.status(403).json({ error: "Forbidden" });
-  db.run(
-    "DELETE FROM settings WHERE key IN ('panel_name', 'footer_text', 'logo_url')",
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
+router.post(
+  "/notifications/read-all",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const userId = req.user.id;
+    try {
+      await settings.markAllNotificationsAsRead(userId);
       res.json({ success: true });
-    },
-  );
-});
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to mark all notifications as read." });
+    }
+  },
+);
 
->>>>>>> Stashed changes
+router.post(
+  "/notifications/:id/delete",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const userId = req.user.id;
+    const notificationId = req.params.id;
+    try {
+      await settings.deleteNotification(userId, notificationId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete notification." });
+    }
+  },
+);
+
+router.post(
+  "/notifications/delete-all",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const userId = req.user.id;
+    try {
+      await settings.deleteAllNotifications(userId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete all notifications." });
+    }
+  },
+);
+
 module.exports = router;

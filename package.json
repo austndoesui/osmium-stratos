@@ -23,13 +23,10 @@
     "jsonwebtoken": "^9.0.2",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
-<<<<<<< Updated upstream
-=======
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "speakeasy": "^2.0.0",
->>>>>>> Stashed changes
     "sqlite3": "^5.1.7",
     "toml": "^3.0.0",
     "ws": "^8.18.3"
