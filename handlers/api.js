@@ -18,6 +18,16 @@ const speakeasy = require("speakeasy");
 const qrcode = require("qrcode");
 const crypto = require("crypto");
 const { migrateInstance } = require("../modules/migrate");
+
+// Import validation schemas
+const {
+  authValidation,
+  userValidation,
+  hostValidation,
+  instanceValidation,
+  idValidation,
+  queryValidation
+} = require("./validation");
 const settings = require("../modules/settings");
 const path = require("path");
 const fs = require("fs");
@@ -28,7 +38,7 @@ const router = express.Router();
 setupAuth(router);
 
 // 2FA login verification endpoint
-router.post("/2fa/verify-login", async (req, res) => {
+router.post("/2fa/verify-login", authValidation.twoFactorVerify, async (req, res) => {
   const { user_id, token } = req.body;
   if (!user_id || !token) {
     return res
@@ -42,6 +52,11 @@ router.post("/2fa/verify-login", async (req, res) => {
     });
     
     if (!user) {
+      // Record failed attempt
+      if (req.recordFailedAttempt) {
+        req.recordFailedAttempt();
+      }
+      console.warn(`🚨 2FA verification failed - invalid user ID: ${user_id} from ${req.ip}`);
       return res.status(401).json({ error: "Invalid user." });
     }
     
@@ -481,7 +496,7 @@ router.get("/hosts/:id/vms/:name/console", (req, res) => {
 });
 
 // ================= USERS =================
-router.post("/register", async (req, res) => {
+router.post("/register", authValidation.register, async (req, res) => {
   const { username, email, password, password_hash, role } = req.body;
   if (!username || !email || (!password && !password_hash)) {
     return res
@@ -501,6 +516,9 @@ router.post("/register", async (req, res) => {
         role: userRole,
       },
     });
+
+    // Log successful registration
+    console.log(`✅ User registered: ${username} (${email}) as ${userRole} from ${req.ip}`);
 
     res.status(201).json({
       success: true,

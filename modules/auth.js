@@ -23,6 +23,11 @@ function setupAuth(router) {
       });
       
       if (!user) {
+        // Record failed attempt
+        if (req.recordFailedAttempt) {
+          req.recordFailedAttempt();
+        }
+        console.warn(`🚨 Login failed - user not found: ${username} from ${req.ip}`);
         return res.status(401).json({ error: 'Invalid username or password.' });
       }
       
@@ -34,13 +39,26 @@ function setupAuth(router) {
       }
       
       if (!match) {
+        // Record failed attempt
+        if (req.recordFailedAttempt) {
+          req.recordFailedAttempt();
+        }
+        console.warn(`🚨 Login failed - invalid password for user: ${username} from ${req.ip}`);
         return res.status(401).json({ error: "Invalid username or password." });
       }
       
       if (user.twoFaEnabled) {
+        console.log(`🔐 2FA required for user: ${username} from ${req.ip}`);
         // 2FA required, do not return token yet
         return res.json({ twofa_required: true, user_id: user.id });
       }
+      
+      // Reset failed attempts on successful login
+      if (req.resetFailedAttempts) {
+        req.resetFailedAttempts();
+      }
+      
+      console.log(`✅ Login successful for user: ${username} from ${req.ip}`);
       
       const token = jwt.sign(
         {
