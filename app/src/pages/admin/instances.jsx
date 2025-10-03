@@ -1,4 +1,3 @@
-<<<<<<< Updated upstream
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import MainLayout from '../../components/mainlayout';
