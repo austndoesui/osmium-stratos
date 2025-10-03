@@ -1,26 +1,24 @@
-const { prisma } = require('../handlers/prisma');
-const bcrypt = require('bcrypt');
+const { prisma } = require("../handlers/prisma");
+const bcrypt = require("bcrypt");
 
 // Update username and email for a user
 async function updateProfile(userId, username, email) {
   if (!username || !email) {
-    throw { status: 400, message: 'Username and email are required.' };
+    throw { status: 400, message: "Username and email are required." };
   }
   // Check for username/email conflicts
-  const conflict = await new Promise((resolve, reject) => {
-    db.get('SELECT id FROM users WHERE (username = ? OR email = ?) AND id != ?', [username, email, userId], (err, row) => {
-      if (err) return reject({ status: 500, message: 'Database error.' });
-      resolve(row);
-    });
+  const conflict = await prisma.user.findFirst({
+    where: {
+      OR: [{ username: username }, { email: email }],
+      NOT: { id: userId },
+    },
   });
   if (conflict) {
-    throw { status: 409, message: 'Username or email already in use.' };
+    throw { status: 409, message: "Username or email already exists." };
   }
-  await new Promise((resolve, reject) => {
-    db.run('UPDATE users SET username = ?, email = ? WHERE id = ?', [username, email, userId], function (err) {
-      if (err) return reject({ status: 500, message: 'Database error.' });
-      resolve();
-    });
+  await prisma.user.update({
+    where: { id: userId },
+    data: { username, email },
   });
   return true;
 }
@@ -28,25 +26,23 @@ async function updateProfile(userId, username, email) {
 // Change password for a user
 async function changePassword(userId, currentPassword, newPassword) {
   if (!currentPassword || !newPassword) {
-    throw { status: 400, message: 'Current and new password are required.' };
+    throw { status: 400, message: "Current and new password are required." };
   }
-  const row = await new Promise((resolve, reject) => {
-    db.get('SELECT password_hash FROM users WHERE id = ?', [userId], (err, row) => {
-      if (err) return reject({ status: 500, message: 'Database error.' });
-      if (!row) return reject({ status: 404, message: 'User not found.' });
-      resolve(row);
-    });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true },
   });
-  const match = await bcrypt.compare(currentPassword, row.password_hash);
+  if (!user) {
+    throw { status: 404, message: "User not found." };
+  }
+  const match = await bcrypt.compare(currentPassword, user.passwordHash);
   if (!match) {
-    throw { status: 401, message: 'Current password is incorrect.' };
+    throw { status: 401, message: "Current password is incorrect." };
   }
   const hash = await bcrypt.hash(newPassword, 10);
-  await new Promise((resolve, reject) => {
-    db.run('UPDATE users SET password_hash = ? WHERE id = ?', [hash, userId], function (err) {
-      if (err) return reject({ status: 500, message: 'Database error.' });
-      resolve();
-    });
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: hash },
   });
   return true;
 }

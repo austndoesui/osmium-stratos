@@ -1,43 +1,43 @@
-const { prisma } = require('../handlers/prisma');
+const { prisma } = require("../handlers/prisma");
 
-function addAuditLog({ user_id, username, action, instance_id, instance_name, host_id, details }) {
+function addAuditLog({
+  user_id,
+  username,
+  action,
+  instance_id,
+  instance_name,
+  host_id,
+  details,
+}) {
   let detailsStr = null;
   if (details) {
     try {
-      detailsStr = typeof details === 'string' ? details : JSON.stringify(details);
+      detailsStr =
+        typeof details === "string" ? details : JSON.stringify(details);
     } catch (e) {
-      console.error('[AuditLogs] Error stringifying details:', e);
+      console.error("[AuditLogs] Error stringifying details:", e);
       detailsStr = String(details);
     }
   }
-  return new Promise((resolve, reject) => {
-    db.run(
-      `INSERT INTO audit_logs (user_id, username, action, instance_id, instance_name, host_id, details) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [user_id || null, username || null, action, instance_id || null, instance_name || null, host_id || null, detailsStr],
-      function (err) {
-        if (err) {
-          console.error('[AuditLogs] Error adding log:', err);
-          return reject(err);
-        }
-        resolve({ id: this.lastID });
-      }
-    );
-  });
+  return prisma.auditLog
+    .create({
+      data: {
+        userId: user_id || null,
+        username: username || null,
+        action,
+        instanceId: instance_id || null,
+        instanceName: instance_name || null,
+        hostId: host_id || null,
+        details: detailsStr,
+      },
+    })
+    .then((result) => ({ id: result.id }));
 }
 
 function getAuditLogsForInstance(instance_id) {
-  return new Promise((resolve, reject) => {
-    db.all(
-      'SELECT * FROM audit_logs WHERE instance_id = ? ORDER BY timestamp DESC',
-      [instance_id],
-      (err, rows) => {
-        if (err) {
-          console.error('[AuditLogs] Error:', err);
-          return reject(err);
-        }
-        resolve(rows);
-      }
-    );
+  return prisma.auditLog.findMany({
+    where: { instanceId: instance_id },
+    orderBy: { createdAt: "desc" },
   });
 }
 

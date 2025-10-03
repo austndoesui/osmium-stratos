@@ -26,7 +26,7 @@ const {
   hostValidation,
   instanceValidation,
   idValidation,
-  queryValidation
+  queryValidation,
 } = require("./validation");
 const settings = require("../modules/settings");
 const path = require("path");
@@ -38,62 +38,68 @@ const router = express.Router();
 setupAuth(router);
 
 // 2FA login verification endpoint
-router.post("/2fa/verify-login", authValidation.twoFactorVerify, async (req, res) => {
-  const { user_id, token } = req.body;
-  if (!user_id || !token) {
-    return res
-      .status(400)
-      .json({ error: "User ID and 2FA code are required." });
-  }
-  
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: user_id }
-    });
-    
-    if (!user) {
-      // Record failed attempt
-      if (req.recordFailedAttempt) {
-        req.recordFailedAttempt();
+router.post(
+  "/2fa/verify-login",
+  authValidation.twoFactorVerify,
+  async (req, res) => {
+    const { user_id, token } = req.body;
+    if (!user_id || !token) {
+      return res
+        .status(400)
+        .json({ error: "User ID and 2FA code are required." });
+    }
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: user_id },
+      });
+
+      if (!user) {
+        // Record failed attempt
+        if (req.recordFailedAttempt) {
+          req.recordFailedAttempt();
+        }
+        console.warn(
+          `🚨 2FA verification failed - invalid user ID: ${user_id} from ${req.ip}`,
+        );
+        return res.status(401).json({ error: "Invalid user." });
       }
-      console.warn(`🚨 2FA verification failed - invalid user ID: ${user_id} from ${req.ip}`);
-      return res.status(401).json({ error: "Invalid user." });
+
+      const valid = await verify2FA(user_id, token);
+      if (!valid) {
+        return res.status(401).json({ error: "Invalid 2FA code." });
+      }
+
+      const jwt = require("jsonwebtoken");
+      const config = require("./config");
+      const JWT_SECRET =
+        config.session.secret || "replace-this-with-a-long-random-secret-key";
+      const jwtToken = jwt.sign(
+        {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+        },
+        JWT_SECRET,
+        { expiresIn: "10m" },
+      );
+      res.json({
+        success: true,
+        token: jwtToken,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+        },
+      });
+    } catch (err) {
+      console.error("2FA verify login error:", err);
+      res.status(500).json({ error: "Database error" });
     }
-    
-    const valid = await verify2FA(user_id, token);
-    if (!valid) {
-      return res.status(401).json({ error: "Invalid 2FA code." });
-    }
-    
-    const jwt = require("jsonwebtoken");
-    const config = require("./config");
-    const JWT_SECRET =
-      config.session.secret || "replace-this-with-a-long-random-secret-key";
-    const jwtToken = jwt.sign(
-      {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-      },
-      JWT_SECRET,
-      { expiresIn: "10m" },
-    );
-    res.json({
-      success: true,
-      token: jwtToken,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (err) {
-    console.error('2FA verify login error:', err);
-    res.status(500).json({ error: "Database error" });
-  }
-});
+  },
+);
 // ================= HOSTS =================
 router.get("/hosts", (req, res) => {
   hosts.listHosts((err, rows) => {
@@ -110,7 +116,7 @@ router.get("/hosts/:id", (req, res) => {
   });
 });
 
-router.post("/hosts", (req, res) => {
+router.post("/hosts", hostValidation.createHost, (req, res) => {
   let { name, address, description, cert, key, ca } = req.body;
   if (!name || !address) {
     return res.status(400).json({ error: "Name and address are required" });
@@ -221,7 +227,7 @@ router.post("/hosts/:id/images", (req, res) => {
 });
 
 // ================= INSTANCES =================
-router.post("/hosts/:id/vms", (req, res) => {
+router.post("/hosts/:id/vms", async (req, res) => {
   const { name, imageAlias, type, user_id, cpu, ram, disk } = req.body;
   if (!name || !imageAlias) {
     return res
@@ -229,126 +235,116 @@ router.post("/hosts/:id/vms", (req, res) => {
       .json({ error: "Instance name and image alias are required" });
   }
   if (user_id) {
-    db.get("SELECT id FROM users WHERE id = ?", [user_id], (err, row) => {
-      if (err)
-        return res
-          .status(500)
-          .json({ error: "Database error checking user_id" });
-      if (!row)
-        return res.status(400).json({ error: "Selected user does not exist" });
-      proceed();
+    const user = await prisma.user.findUnique({
+      where: { id: user_id },
     });
-  } else {
-    proceed();
+    if (!user) {
+      return res.status(400).json({ error: "Selected user does not exist" });
+    }
   }
-  function proceed() {
-    hosts.getHost(req.params.id, (err, host) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (!host) return res.status(404).json({ error: "Host not found" });
-      instance.createVM(
-        host,
-        { name, imageAlias, type, cpu, ram, disk },
-        (err, result) => {
-          if (err) return res.status(500).json({ error: err.message });
-          const dbParams = [
-            name,
-            host.id,
-            name,
-            user_id || null,
-            cpu || null,
-            ram || null,
-            disk || null,
-            imageAlias,
-          ];
-          db.run(
-            "INSERT INTO instances (name, host_id, lxd_name, user_id, cpu, ram, disk, image_alias) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            dbParams,
-            function (dbErr) {
-              if (dbErr) {
-                // Still return LXD result, but warn about DB
-                return res.status(201).json({
-                  ...result,
-                  dbWarning: "Instance created in LXD but not saved in DB.",
-                });
-              }
-              res.status(201).json({ ...result, instance_id: this.lastID });
-            },
-          );
-        },
-      );
-    });
-  }
-});
-
-router.get("/vms", (req, res) => {
-  hosts.listHosts((err, hostRows) => {
+  hosts.getHost(req.params.id, async (err, host) => {
     if (err) return res.status(500).json({ error: err.message });
-    if (!hostRows.length) return res.json([]);
-    let results = [];
-    let completed = 0;
-    hostRows.forEach((host) => {
-      instance.listVMsOnHost(host, async (err, vms) => {
-        if (err) {
-          results.push({
-            host: { id: host.id, name: host.name, address: host.address },
-            vms: { error: err.message },
+    if (!host) return res.status(404).json({ error: "Host not found" });
+    instance.createVM(
+      host,
+      { name, imageAlias, type, cpu, ram, disk },
+      async (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        try {
+          const instance = await prisma.instance.create({
+            data: {
+              name,
+              hostId: host.id,
+              lxdName: name,
+              userId: user_id || null,
+              cpu: cpu || null,
+              ram: ram || null,
+              disk: disk || null,
+              imageAlias,
+            },
           });
-        } else {
-          const dbInstances = await new Promise((resolve) => {
-            db.all(
-              `SELECT i.name, i.user_id, i.image_alias, u.username, u.email FROM instances i LEFT JOIN users u ON i.user_id = u.id WHERE i.host_id = ?`,
-              [host.id],
-              (dbErr, rows) => {
-                if (dbErr) resolve([]);
-                else resolve(rows);
-              },
-            );
-          });
-          const vmsWithOwner = Array.isArray(vms)
-            ? vms.map((vm) => {
-                const dbInst = dbInstances.find((i) => i.name === vm.name);
-                return {
-                  ...vm,
-                  owner:
-                    dbInst && dbInst.user_id
-                      ? { username: dbInst.username, email: dbInst.email }
-                      : null,
-                  image:
-                    dbInst && dbInst.image_alias
-                      ? dbInst.image_alias
-                      : vm.image,
-                };
-              })
-            : vms;
-          results.push({
-            host: { id: host.id, name: host.name, address: host.address },
-            vms: vmsWithOwner,
+          res.status(201).json({ ...result, instance_id: instance.id });
+        } catch (dbErr) {
+          // Still return LXD result, but warn about DB
+          return res.status(201).json({
+            ...result,
+            dbWarning: "Instance created in LXD but not saved in DB.",
           });
         }
-        completed++;
-        if (completed === hostRows.length) {
-          res.json(results);
-        }
-      });
-    });
+      },
+    );
   });
 });
 
-router.delete("/hosts/:id/vms/:name", (req, res) => {
-  hosts.getHost(req.params.id, (err, host) => {
+router.get("/vms", async (req, res) => {
+  const hostRows = await new Promise((resolve, reject) => {
+    hosts.listHosts((err, hosts) => {
+      if (err) reject(err);
+      else resolve(hosts);
+    });
+  });
+  if (!hostRows.length) return res.json([]);
+  let results = [];
+  let completed = 0;
+  for (const host of hostRows) {
+    const vms = await new Promise((resolve, reject) => {
+      instance.listVMsOnHost(host, (err, v) => {
+        if (err) reject(err);
+        else resolve(v);
+      });
+    });
+    if (vms.error) {
+      results.push({
+        host: { id: host.id, name: host.name, address: host.address },
+        vms: { error: vms.error },
+      });
+    } else {
+      const dbInstances = await prisma.instance.findMany({
+        where: { hostId: host.id },
+        include: {
+          user: {
+            select: { username: true, email: true },
+          },
+        },
+      });
+      const vmsWithOwner = Array.isArray(vms)
+        ? vms.map((vm) => {
+            const dbInst = dbInstances.find((i) => i.name === vm.name);
+            return {
+              ...vm,
+              owner:
+                dbInst && dbInst.user
+                  ? { username: dbInst.user.username, email: dbInst.user.email }
+                  : null,
+              image: dbInst && dbInst.imageAlias ? dbInst.imageAlias : vm.image,
+            };
+          })
+        : vms;
+      results.push({
+        host: { id: host.id, name: host.name, address: host.address },
+        vms: vmsWithOwner,
+      });
+    }
+    completed++;
+    if (completed === hostRows.length) {
+      res.json(results);
+    }
+  }
+});
+
+router.delete("/hosts/:id/vms/:name", async (req, res) => {
+  hosts.getHost(req.params.id, async (err, host) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.deleteInstance(host, req.params.name, (err, result) => {
+    instance.deleteInstance(host, req.params.name, async (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
-      db.run(
-        "DELETE FROM instances WHERE host_id = ? AND name = ?",
-        [host.id, req.params.name],
-        function (dbErr) {
-          if (dbErr) {
-          }
-          res.status(204).end();
+      await prisma.instance.deleteMany({
+        where: {
+          hostId: host.id,
+          name: req.params.name,
         },
-      );
+      });
+      res.status(204).end();
     });
   });
 });
@@ -364,128 +360,118 @@ router.get("/instances/:id/audit-logs", async (req, res) => {
 
 router.get("/hosts/:id/vms/:name/history", async (req, res) => {
   try {
-    db.get(
-      "SELECT id FROM instances WHERE host_id = ? AND name = ? COLLATE NOCASE",
-      [req.params.id, req.params.name],
-      async (err, instance) => {
-        if (err) {
-          return res.status(500).json({ error: "Database error" });
-        }
-        if (!instance) {
-          return res.status(404).json({ error: "Instance not found" });
-        }
-        try {
-          let logs = await auditLogs.getAuditLogsForInstance(instance.id);
-          if (logs.length === 0) {
-            logs = await new Promise((resolve, reject) => {
-              db.all(
-                "SELECT * FROM audit_logs WHERE instance_name = ? COLLATE NOCASE AND host_id = ? ORDER BY timestamp DESC",
-                [req.params.name, req.params.id],
-                (err, rows) => {
-                  if (err) return reject(err);
-                  resolve(rows);
-                },
-              );
-            });
-          }
-          const simplifiedLogs = logs.map((log) => {
-            const newLog = { ...log };
-            if (newLog.details) {
-              if (typeof newLog.details === "string") {
-              } else {
-                try {
-                  newLog.details = JSON.stringify(newLog.details);
-                } catch (e) {
-                  newLog.details = String(newLog.details);
-                }
-              }
-            }
-            return newLog;
-          });
-          res.json(simplifiedLogs);
-        } catch (err) {
-          res.status(500).json({ error: err.message });
-        }
+    const instance = await prisma.instance.findFirst({
+      where: {
+        hostId: parseInt(req.params.id),
+        name: req.params.name,
       },
-    );
+    });
+    if (!instance) {
+      return res.status(404).json({ error: "Instance not found" });
+    }
+    let logs = await auditLogs.getAuditLogsForInstance(instance.id);
+    if (logs.length === 0) {
+      logs = await prisma.auditLog.findMany({
+        where: {
+          instanceName: req.params.name,
+          hostId: parseInt(req.params.id),
+        },
+        orderBy: { timestamp: "desc" },
+      });
+    }
+    const simplifiedLogs = logs.map((log) => {
+      const newLog = { ...log };
+      if (newLog.details) {
+        if (typeof newLog.details === "string") {
+        } else {
+          try {
+            newLog.details = JSON.stringify(newLog.details);
+          } catch (e) {
+            newLog.details = String(newLog.details);
+          }
+        }
+      }
+      return newLog;
+    });
+    res.json(simplifiedLogs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/hosts/:id/vms/:name/start", (req, res) => {
-  hosts.getHost(req.params.id, (err, host) => {
+router.post("/hosts/:id/vms/:name/start", async (req, res) => {
+  hosts.getHost(req.params.id, async (err, host) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.startInstance(host, req.params.name, (err, result) => {
+    instance.startInstance(host, req.params.name, async (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
-      db.get(
-        "SELECT id FROM instances WHERE name = ? AND host_id = ?",
-        [req.params.name, req.params.id],
-        (dbErr, inst) => {
-          auditLogs.addAuditLog({
-            user_id: req.user?.id || null,
-            username: req.user?.username || "system",
-            action: "start",
-            instance_id: inst?.id,
-            instance_name: req.params.name,
-            host_id: req.params.id,
-            details: { result },
-          });
+      const inst = await prisma.instance.findFirst({
+        where: {
+          name: req.params.name,
+          hostId: parseInt(req.params.id),
         },
-      );
+      });
+      auditLogs.addAuditLog({
+        user_id: req.user?.id || null,
+        username: req.user?.username || "system",
+        action: "start",
+        instance_id: inst?.id,
+        instance_name: req.params.name,
+        host_id: req.params.id,
+        details: { result },
+      });
       res.status(200).json(result);
     });
   });
 });
 
-router.post("/hosts/:id/vms/:name/stop", (req, res) => {
-  hosts.getHost(req.params.id, (err, host) => {
+router.post("/hosts/:id/vms/:name/stop", async (req, res) => {
+  hosts.getHost(req.params.id, async (err, host) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.stopInstance(host, req.params.name, (err, result) => {
+    instance.stopInstance(host, req.params.name, async (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
-      db.get(
-        "SELECT id FROM instances WHERE name = ? AND host_id = ?",
-        [req.params.name, req.params.id],
-        (dbErr, inst) => {
-          auditLogs.addAuditLog({
-            user_id: req.user?.id || null,
-            username: req.user?.username || "system",
-            action: "stop",
-            instance_id: inst?.id,
-            instance_name: req.params.name,
-            host_id: req.params.id,
-            details: { result },
-          });
+      const inst = await prisma.instance.findFirst({
+        where: {
+          name: req.params.name,
+          hostId: parseInt(req.params.id),
         },
-      );
+      });
+      auditLogs.addAuditLog({
+        user_id: req.user?.id || null,
+        username: req.user?.username || "system",
+        action: "stop",
+        instance_id: inst?.id,
+        instance_name: req.params.name,
+        host_id: req.params.id,
+        details: { result },
+      });
       res.status(200).json(result);
     });
   });
 });
 
-router.post("/hosts/:id/vms/:name/restart", (req, res) => {
-  hosts.getHost(req.params.id, (err, host) => {
+router.post("/hosts/:id/vms/:name/restart", async (req, res) => {
+  hosts.getHost(req.params.id, async (err, host) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.restartInstance(host, req.params.name, (err, result) => {
+    instance.restartInstance(host, req.params.name, async (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
-      db.get(
-        "SELECT id FROM instances WHERE name = ? AND host_id = ?",
-        [req.params.name, req.params.id],
-        (dbErr, inst) => {
-          auditLogs.addAuditLog({
-            user_id: req.user?.id || null,
-            username: req.user?.username || "system",
-            action: "restart",
-            instance_id: inst?.id,
-            instance_name: req.params.name,
-            host_id: req.params.id,
-            details: { result },
-          });
+      const inst = await prisma.instance.findFirst({
+        where: {
+          name: req.params.name,
+          hostId: parseInt(req.params.id),
         },
-      );
+      });
+      auditLogs.addAuditLog({
+        user_id: req.user?.id || null,
+        username: req.user?.username || "system",
+        action: "restart",
+        instance_id: inst?.id,
+        instance_name: req.params.name,
+        host_id: req.params.id,
+        details: { result },
+      });
       res.status(200).json(result);
     });
   });
@@ -507,7 +493,7 @@ router.post("/register", authValidation.register, async (req, res) => {
     const hash = password_hash || (await bcrypt.hash(password, 10));
     const userRole =
       role && (role === "admin" || role === "user") ? role : "user";
-    
+
     const user = await prisma.user.create({
       data: {
         username,
@@ -518,7 +504,9 @@ router.post("/register", authValidation.register, async (req, res) => {
     });
 
     // Log successful registration
-    console.log(`✅ User registered: ${username} (${email}) as ${userRole} from ${req.ip}`);
+    console.log(
+      `✅ User registered: ${username} (${email}) as ${userRole} from ${req.ip}`,
+    );
 
     res.status(201).json({
       success: true,
@@ -528,12 +516,12 @@ router.post("/register", authValidation.register, async (req, res) => {
       role: user.role,
     });
   } catch (e) {
-    if (e.code === 'P2002') {
+    if (e.code === "P2002") {
       return res
         .status(409)
         .json({ error: "Username or email already exists." });
     }
-    console.error('Registration error:', e);
+    console.error("Registration error:", e);
     res.status(500).json({ error: "Server error." });
   }
 });
@@ -596,147 +584,38 @@ router.post(
 );
 
 // 2FA endpoints
-router.get("/account/2fa/status", router.ensureAuthenticated, async (req, res) => {
-  const userId = req.user.id;
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { twoFaEnabled: true }
-    });
-    if (!user) {
-      return res.status(500).json({ error: "Failed to get 2FA status" });
-    }
-    res.json({ enabled: !!user.twoFaEnabled });
-  } catch (err) {
-    console.error('2FA status error:', err);
-    res.status(500).json({ error: "Failed to get 2FA status" });
-  }
-});
-
-router.post("/account/2fa/setup", router.ensureAuthenticated, async (req, res) => {
-  const userId = req.user.id;
-  const username = req.user.username;
-  const secret = speakeasy.generateSecret({
-    name: `Osmium Stratos (${username})`,
-    issuer: "Osmium Stratos",
-    length: 32,
-  });
-  const recoveryCodes = [];
-  for (let i = 0; i < 10; i++) {
-    const code = crypto.randomBytes(4).toString("hex").toUpperCase();
-    recoveryCodes.push(code);
-  }
-  const recoveryCodesJson = JSON.stringify(recoveryCodes);
-
-  try {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        twoFaSecret: secret.base32,
-        recoveryCodes: recoveryCodesJson,
-        twoFaEnabled: false
-      }
-    });
-
-    qrcode.toDataURL(secret.otpauth_url, (qrCodeErr, qrCodeUrl) => {
-      if (qrCodeErr) {
-        return res.status(500).json({ error: "Failed to generate QR code" });
-      }
-      res.json({
-        secret: secret.base32,
-        qrCode: qrCodeUrl,
-        recoveryCodes: recoveryCodes,
-      });
-    });
-  } catch (err) {
-    console.error("2FA Setup DB Error:", err);
-    return res.status(500).json({ error: "Failed to initialize 2FA setup." });
-  }
-});
-
-router.post("/account/2fa/verify", router.ensureAuthenticated, async (req, res) => {
-  const { token } = req.body;
-  const userId = req.user.id;
-  if (!token) {
-    return res.status(400).json({ error: "Verification code is required." });
-  }
-
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { twoFaSecret: true, recoveryCodes: true }
-    });
-
-    if (!user || !user.twoFaSecret) {
-      return res.status(400).json({ error: "2FA setup not initiated or already enabled." });
-    }
-
-    const verified = speakeasy.totp.verify({
-      secret: user.twoFaSecret,
-      encoding: "base32",
-      token: token,
-      window: 2,
-    });
-
-    if (!verified) {
-      return res.status(400).json({ error: "Invalid verification code" });
-    }
-
-    let storedRecoveryCodes = [];
+router.get(
+  "/account/2fa/status",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const userId = req.user.id;
     try {
-      if (user.recoveryCodes) {
-        storedRecoveryCodes = JSON.parse(user.recoveryCodes);
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { twoFaEnabled: true },
+      });
+      if (!user) {
+        return res.status(500).json({ error: "Failed to get 2FA status" });
       }
-    } catch (parseErr) {
-      console.error("Failed to parse recovery codes:", parseErr);
+      res.json({ enabled: !!user.twoFaEnabled });
+    } catch (err) {
+      console.error("2FA status error:", err);
+      res.status(500).json({ error: "Failed to get 2FA status" });
     }
+  },
+);
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: { twoFaEnabled: true }
+router.post(
+  "/account/2fa/setup",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const userId = req.user.id;
+    const username = req.user.username;
+    const secret = speakeasy.generateSecret({
+      name: `Osmium Stratos (${username})`,
+      issuer: "Osmium Stratos",
+      length: 32,
     });
-
-    res.json({
-      success: true,
-      message: "Two-factor authentication enabled successfully!",
-      recoveryCodes: storedRecoveryCodes,
-    });
-  } catch (err) {
-    console.error('2FA verify error:', err);
-    res.status(500).json({ error: "Failed to enable 2FA" });
-  }
-});
-
-router.post("/account/2fa/disable", router.ensureAuthenticated, async (req, res) => {
-  const userId = req.user.id;
-  try {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        twoFaSecret: null,
-        twoFaEnabled: false,
-        recoveryCodes: null
-      }
-    });
-    res.json({ success: true, message: "2FA disabled successfully" });
-  } catch (err) {
-    console.error('2FA disable error:', err);
-    res.status(500).json({ error: "Failed to disable 2FA" });
-  }
-});
-
-router.post("/account/2fa/recovery-codes", router.ensureAuthenticated, async (req, res) => {
-  const userId = req.user.id;
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { twoFaEnabled: true }
-    });
-
-    if (!user.twoFaEnabled) {
-      return res.status(400).json({ error: "2FA is not enabled" });
-    }
-
     const recoveryCodes = [];
     for (let i = 0; i < 10; i++) {
       const code = crypto.randomBytes(4).toString("hex").toUpperCase();
@@ -744,20 +623,151 @@ router.post("/account/2fa/recovery-codes", router.ensureAuthenticated, async (re
     }
     const recoveryCodesJson = JSON.stringify(recoveryCodes);
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: { recoveryCodes: recoveryCodesJson }
-    });
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          twoFaSecret: secret.base32,
+          recoveryCodes: recoveryCodesJson,
+          twoFaEnabled: false,
+        },
+      });
 
-    res.json({
-      success: true,
-      recoveryCodes: recoveryCodes,
-    });
-  } catch (err) {
-    console.error('Recovery codes error:', err);
-    res.status(500).json({ error: "Failed to regenerate recovery codes" });
-  }
-});
+      qrcode.toDataURL(secret.otpauth_url, (qrCodeErr, qrCodeUrl) => {
+        if (qrCodeErr) {
+          return res.status(500).json({ error: "Failed to generate QR code" });
+        }
+        res.json({
+          secret: secret.base32,
+          qrCode: qrCodeUrl,
+          recoveryCodes: recoveryCodes,
+        });
+      });
+    } catch (err) {
+      console.error("2FA Setup DB Error:", err);
+      return res.status(500).json({ error: "Failed to initialize 2FA setup." });
+    }
+  },
+);
+
+router.post(
+  "/account/2fa/verify",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const { token } = req.body;
+    const userId = req.user.id;
+    if (!token) {
+      return res.status(400).json({ error: "Verification code is required." });
+    }
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { twoFaSecret: true, recoveryCodes: true },
+      });
+
+      if (!user || !user.twoFaSecret) {
+        return res
+          .status(400)
+          .json({ error: "2FA setup not initiated or already enabled." });
+      }
+
+      const verified = speakeasy.totp.verify({
+        secret: user.twoFaSecret,
+        encoding: "base32",
+        token: token,
+        window: 2,
+      });
+
+      if (!verified) {
+        return res.status(400).json({ error: "Invalid verification code" });
+      }
+
+      let storedRecoveryCodes = [];
+      try {
+        if (user.recoveryCodes) {
+          storedRecoveryCodes = JSON.parse(user.recoveryCodes);
+        }
+      } catch (parseErr) {
+        console.error("Failed to parse recovery codes:", parseErr);
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { twoFaEnabled: true },
+      });
+
+      res.json({
+        success: true,
+        message: "Two-factor authentication enabled successfully!",
+        recoveryCodes: storedRecoveryCodes,
+      });
+    } catch (err) {
+      console.error("2FA verify error:", err);
+      res.status(500).json({ error: "Failed to enable 2FA" });
+    }
+  },
+);
+
+router.post(
+  "/account/2fa/disable",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const userId = req.user.id;
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          twoFaSecret: null,
+          twoFaEnabled: false,
+          recoveryCodes: null,
+        },
+      });
+      res.json({ success: true, message: "2FA disabled successfully" });
+    } catch (err) {
+      console.error("2FA disable error:", err);
+      res.status(500).json({ error: "Failed to disable 2FA" });
+    }
+  },
+);
+
+router.post(
+  "/account/2fa/recovery-codes",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    const userId = req.user.id;
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { twoFaEnabled: true },
+      });
+
+      if (!user.twoFaEnabled) {
+        return res.status(400).json({ error: "2FA is not enabled" });
+      }
+
+      const recoveryCodes = [];
+      for (let i = 0; i < 10; i++) {
+        const code = crypto.randomBytes(4).toString("hex").toUpperCase();
+        recoveryCodes.push(code);
+      }
+      const recoveryCodesJson = JSON.stringify(recoveryCodes);
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { recoveryCodes: recoveryCodesJson },
+      });
+
+      res.json({
+        success: true,
+        recoveryCodes: recoveryCodes,
+      });
+    } catch (err) {
+      console.error("Recovery codes error:", err);
+      res.status(500).json({ error: "Failed to regenerate recovery codes" });
+    }
+  },
+);
 // ================= INSTANCE UTILS =================
 router.get("/hosts/:id/vms/:name/usage", (req, res) => {
   hosts.getHost(req.params.id, (err, host) => {
@@ -770,27 +780,27 @@ router.get("/hosts/:id/vms/:name/usage", (req, res) => {
   });
 });
 
-router.get("/hosts/:id/vms/:name/config", (req, res) => {
-  db.get(
-    "SELECT cpu, ram, disk FROM instances WHERE host_id = ? AND name = ?",
-    [req.params.id, req.params.name],
-    (err, row) => {
-      if (err) return res.status(500).json({ error: "Database error" });
-      if (!row) return res.status(404).json({ error: "Instance not found" });
-      res.json(row);
+router.get("/hosts/:id/vms/:name/config", async (req, res) => {
+  const row = await prisma.instance.findFirst({
+    where: {
+      hostId: parseInt(req.params.id),
+      name: req.params.name,
     },
-  );
+    select: {
+      cpu: true,
+      ram: true,
+      disk: true,
+    },
+  });
+  if (!row) return res.status(404).json({ error: "Instance not found" });
+  res.json(row);
 });
 
-router.get("/hosts/:id/instance-count", (req, res) => {
-  db.get(
-    "SELECT COUNT(*) as count FROM instances WHERE host_id = ?",
-    [req.params.id],
-    (err, row) => {
-      if (err) return res.status(500).json({ error: "Database error" });
-      res.json({ count: row ? row.count : 0 });
-    },
-  );
+router.get("/hosts/:id/instance-count", async (req, res) => {
+  const count = await prisma.instance.count({
+    where: { hostId: parseInt(req.params.id) },
+  });
+  res.json({ count });
 });
 
 // ================= NETWORK =================
@@ -837,33 +847,38 @@ router.delete(
   },
 );
 
-router.post("/hosts/:id/vms/:name/resize", (req, res) => {
+router.post("/hosts/:id/vms/:name/resize", async (req, res) => {
   const { cpu, ram, disk } = req.body;
-  hosts.getHost(req.params.id, (err, host) => {
+  hosts.getHost(req.params.id, async (err, host) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!host) return res.status(404).json({ error: "Host not found" });
     instance.resizeInstance(
       host,
       req.params.name,
       { cpu, ram, disk },
-      (err, result) => {
+      async (err, result) => {
         if (err) return res.status(500).json({ error: err.message });
 
-        db.run(
-          "UPDATE instances SET cpu = ?, ram = ?, disk = ? WHERE host_id = ? AND name = ?",
-          [cpu || null, ram || null, disk || null, host.id, req.params.name],
-          function (dbErr) {
-            if (dbErr) {
-              console.error("Failed to update instance specs in DB:", dbErr);
-
-              return res.status(200).json({
-                ...result,
-                dbWarning: "Specs updated in LXD but not saved in DB.",
-              });
-            }
-            res.status(200).json({ ...result });
-          },
-        );
+        try {
+          await prisma.instance.updateMany({
+            where: {
+              hostId: host.id,
+              name: req.params.name,
+            },
+            data: {
+              cpu: cpu || null,
+              ram: ram || null,
+              disk: disk || null,
+            },
+          });
+          res.status(200).json({ ...result });
+        } catch (dbErr) {
+          console.error("Failed to update instance specs in DB:", dbErr);
+          res.status(200).json({
+            ...result,
+            dbWarning: "Specs updated in LXD but not saved in DB.",
+          });
+        }
       },
     );
   });
@@ -953,31 +968,35 @@ router.get("/notifications", router.ensureAuthenticated, async (req, res) => {
   try {
     const notifications = await prisma.notification.findMany({
       where: { user_id: req.user.id },
-      orderBy: { created_at: 'desc' },
-      take: 50
+      orderBy: { created_at: "desc" },
+      take: 50,
     });
     res.json(notifications);
   } catch (err) {
-    console.error('Notifications error:', err);
+    console.error("Notifications error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/notifications/:id/read", router.ensureAuthenticated, async (req, res) => {
-  try {
-    await prisma.notification.update({
-      where: { 
-        id: parseInt(req.params.id),
-        user_id: req.user.id 
-      },
-      data: { is_read: true }
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Mark notification read error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+router.post(
+  "/notifications/:id/read",
+  router.ensureAuthenticated,
+  async (req, res) => {
+    try {
+      await prisma.notification.update({
+        where: {
+          id: parseInt(req.params.id),
+          user_id: req.user.id,
+        },
+        data: { is_read: true },
+      });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Mark notification read error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+);
 
 async function createNotification({ user_id, title, message, type }) {
   try {
@@ -986,32 +1005,35 @@ async function createNotification({ user_id, title, message, type }) {
         user_id,
         title,
         message,
-        type: type || null
-      }
+        type: type || null,
+      },
     });
   } catch (err) {
-    console.error('Create notification error:', err);
+    console.error("Create notification error:", err);
   }
 }
 module.exports.createNotification = createNotification;
 
 // ================= INSTANCE MIGRATION =================
-router.post("/hosts/:sourceHostId/vms/:instanceName/migrate", async (req, res) => {
-  const { sourceHostId, instanceName } = req.params;
-  const { targetHostId } = req.body;
-  if (!targetHostId)
-    return res.status(400).json({ error: "targetHostId is required" });
-  try {
-    const result = await migrateInstance({
-      sourceHostId,
-      targetHostId,
-      instanceName,
-    });
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+router.post(
+  "/hosts/:sourceHostId/vms/:instanceName/migrate",
+  async (req, res) => {
+    const { sourceHostId, instanceName } = req.params;
+    const { targetHostId } = req.body;
+    if (!targetHostId)
+      return res.status(400).json({ error: "targetHostId is required" });
+    try {
+      const result = await migrateInstance({
+        sourceHostId,
+        targetHostId,
+        instanceName,
+      });
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+);
 
 // ================= SETTINGS =================
 router.get("/settings", (req, res) => {
@@ -1046,18 +1068,18 @@ router.post("/settings", router.ensureAuthenticated, (req, res) => {
 router.post("/settings/reset", router.ensureAuthenticated, async (req, res) => {
   if (req.user.role !== "admin")
     return res.status(403).json({ error: "Forbidden" });
-  
+
   try {
     await prisma.setting.deleteMany({
       where: {
         key: {
-          in: ['panel_name', 'footer_text', 'logo_url']
-        }
-      }
+          in: ["panel_name", "footer_text", "logo_url"],
+        },
+      },
     });
     res.json({ success: true });
   } catch (err) {
-    console.error('Settings reset error:', err);
+    console.error("Settings reset error:", err);
     res.status(500).json({ error: err.message });
   }
 });
