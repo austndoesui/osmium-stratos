@@ -74,16 +74,27 @@ npm install
 
 1. **Create PostgreSQL Database**:
 ```sql
-CREATE DATABASE osmium_stratos;
-CREATE USER osmium_user WITH PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE osmium_stratos TO osmium_user;
+PGPASSWORD=password psql -U postgres -h localhost -p 5432
+
+CREATE DATABASE osmium_db;
+
+GRANT ALL PRIVILEGES ON DATABASE osmium_db TO postgres;
+
+\q
 ```
 
 2. **Configure Environment Variables**:
 Create a `.env` file in the root directory:
 ```env
 # Database Configuration
-DATABASE_URL="postgresql://osmium_user:your_secure_password@localhost:5432/osmium_stratos"
+DB_USER="postgres"
+DB_PASSWORD="password"
+DB_HOST="localhost"
+DB_PORT="5432"
+DB_NAME="osmium_db"
+
+DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
 
 # JWT Configuration
 JWT_SECRET="your_very_secure_jwt_secret_key_here"
@@ -218,12 +229,10 @@ sudo lxd init
 ### 2. Configure LXD for Remote Access
 
 ```bash
-# Generate client certificate
-lxc config set core.https_address "0.0.0.0:8443"
-lxc config set core.trust_password "your_secure_password"
-
-# Add trust certificate (run this from Osmium Stratos server)
-lxc remote add myhost https://target-host-ip:8443
+openssl req -x509 -newkey rsa:4096 -keyout client.key -out client.crt -days 365 -nodes -subj "/CN=osmium-client" # generate client certificate and key
+lxc config trust add client.crt # add certificate to LXD trust store
+cat client.crt # display certificate content
+cat client.key # display private key content
 ```
 
 ### 3. Add Hosts in Osmium Stratos
@@ -241,7 +250,7 @@ lxc remote add myhost https://target-host-ip:8443
 
 ### First Time Setup
 
-1. **Access the Application**: Open `http://localhost:5173` in your browser
+1. **Access the Application**: Open `http://localhost:3000` (Default Production Url) in your browser
 2. **Create Admin Account**: Use the registration form to create the first admin user
 3. **Add LXD Hosts**: Go to Admin → Node Management and add your LXD hosts
 4. **Configure Images**: Go to Admin → Image Management to set up available images
