@@ -225,147 +225,67 @@ async function startServer() {
       // Clear console for clean startup
       console.clear();
 
-      // Modern ASCII art logo
-      console.log(
-        chalk.cyan.bold(`
-    ╔═══════════════════════════════════════════════════════════╗
-    ║                                                           ║
-    ║   ██████  ███████ ███    ███ ██ ██    ██ ███    ███      ║
-    ║  ██    ██ ██      ████  ████ ██ ██    ██ ████  ████      ║
-    ║  ██    ██ ███████ ██ ████ ██ ██ ██    ██ ██ ████ ██      ║
-    ║  ██    ██      ██ ██  ██  ██ ██ ██    ██ ██  ██  ██      ║
-    ║   ██████  ███████ ██      ██ ██  ██████  ██      ██      ║
-    ║                                                           ║
-    ║                 Osmium ( stratos ) 0.3x                        ║
-    ║                                                           ║
-    ╚═══════════════════════════════════════════════════════════╝
-  `),
-      );
+      // Modern clean header
+      const timestamp = new Date().toLocaleString();
+      const mode = config.mode || "development";
+      const version = "0.3x";
 
-      // Version and status info
-      console.log(
-        chalk.gray(
-          "    ┌─────────────────────────────────────────────────────────┐",
-        ),
-      );
-      console.log(
-        chalk.gray("    │") +
-          chalk.white.bold("  Version: ") +
-          chalk.cyan("0.3x") +
-          chalk.gray("                                           │"),
-      );
-      console.log(
-        chalk.gray("    │") +
-          chalk.white.bold("  Mode: ") +
-          chalk.yellow(config.mode || "development") +
-          chalk.gray("                                       │"),
-      );
-      console.log(
-        chalk.gray("    │") +
-          chalk.white.bold("  Port: ") +
-          chalk.green(PORT) +
-          chalk.gray("                                               │"),
-      );
-      console.log(
-        chalk.gray(
-          "    └─────────────────────────────────────────────────────────┘",
-        ),
-      );
+      console.log("");
+      console.log(chalk.cyan("  ╭──────────────────────────────────────────╮"));
+      console.log(chalk.cyan("  │") + chalk.bold.white("               OSMIUM ") + chalk.cyan.dim("[STRATOS]") + chalk.cyan("              │"));
+      console.log(chalk.cyan("  │") + chalk.gray("          Container Management Platform       ") + chalk.cyan("│"));
+      console.log(chalk.cyan("  ├──────────────────────────────────────────┤"));
+      console.log(chalk.cyan("  │") + chalk.white("  Version  ") + chalk.cyan("│ ") + chalk.yellow(version.padEnd(27)) + chalk.cyan(" │"));
+      console.log(chalk.cyan("  │") + chalk.white("  Mode     ") + chalk.cyan("│ ") + chalk.yellow(mode.padEnd(27)) + chalk.cyan(" │"));
+      console.log(chalk.cyan("  │") + chalk.white("  Port     ") + chalk.cyan("│ ") + chalk.green(PORT.toString().padEnd(27)) + chalk.cyan(" │"));
+      console.log(chalk.cyan("  │") + chalk.white("  Started  ") + chalk.cyan("│ ") + chalk.blue(timestamp.padEnd(27)) + chalk.cyan(" │"));
+      console.log(chalk.cyan("  ╰──────────────────────────────────────────╯"));
+      console.log("");
       console.log("");
 
       if (config.mode !== "production") {
         const modules = Object.keys(moduleHandler);
 
         // Modern loading animation
-        console.log(chalk.white.bold("    🚀 Initializing System Modules..."));
+        console.log(chalk.blue("  ⚡ Initializing modules..."));
         console.log("");
 
         let moduleIndex = 0;
-        let dots = 0;
 
         const loadingInterval = setInterval(() => {
           if (moduleIndex < modules.length) {
             const module = modules[moduleIndex];
-            const status = "✅";
             const icon = getModuleIcon(module);
+            const moduleName = module.charAt(0).toUpperCase() + module.slice(1).replace("_", " ");
 
-            process.stdout.clearLine();
-            process.stdout.cursorTo(0);
-            process.stdout.write(
-              chalk.green(
-                `    ${status} ${icon} ${module.charAt(0).toUpperCase() + module.slice(1).replace("_", " ")} module loaded`,
-              ),
+            console.log(
+              chalk.green("  ✓ ") + 
+              chalk.dim(icon + " ") + 
+              chalk.white(moduleName) + 
+              chalk.gray(" module")
             );
 
-            setTimeout(() => {
-              console.log("");
-              moduleIndex++;
-            }, 100);
+            moduleIndex++;
           } else {
             clearInterval(loadingInterval);
 
-            // Final status
             console.log("");
-            console.log(
-              chalk.gray(
-                "    ┌─────────────────────────────────────────────────────────┐",
-              ),
-            );
-            console.log(
-              chalk.gray("    │") +
-                chalk.green.bold("  ✅ All modules loaded successfully") +
-                chalk.gray("                    │"),
-            );
-            console.log(
-              chalk.gray("    │") +
-                chalk.blue.bold(
-                  `  🌐 Server running at http://localhost:${PORT}`,
-                ) +
-                chalk.gray("             │"),
-            );
-            console.log(
-              chalk.gray("    │") +
-                chalk.yellow.bold("  📊 Ready to accept connections") +
-                chalk.gray("                        │"),
-            );
-            console.log(
-              chalk.gray(
-                "    └─────────────────────────────────────────────────────────┘",
-              ),
-            );
+            console.log(chalk.green("  ✓ ") + chalk.bold.green("All modules loaded successfully"));
+            console.log(chalk.blue("  🌐 ") + chalk.bold.blue(`Server running at http://localhost:${PORT}`));
+            console.log(chalk.yellow("  📊 ") + chalk.bold.yellow("Ready to accept connections"));
             console.log("");
-            console.log(
-              chalk.cyan.bold("    🎯 System Status: ") +
-                chalk.green.bold("ONLINE"),
-            );
+            console.log(chalk.cyan("  Status: ") + chalk.bold.green("ONLINE"));
             console.log("");
           }
-        }, 200);
+        }, 150);
 
         return;
       }
 
-      // Production mode - simple output
-      console.log(
-        chalk.gray(
-          "    ┌─────────────────────────────────────────────────────────┐",
-        ),
-      );
-      console.log(
-        chalk.gray("    │") +
-          chalk.green.bold("  🌐 Production server running") +
-          chalk.gray("                         │"),
-      );
-      console.log(
-        chalk.gray("    │") +
-          chalk.blue.bold(`  🔗 http://localhost:${PORT}`) +
-          chalk.gray("                                  │"),
-      );
-      console.log(
-        chalk.gray(
-          "    └─────────────────────────────────────────────────────────┘",
-        ),
-      );
+      // Production mode - clean output
+      console.log(chalk.green("  ✓ ") + chalk.bold.green("Production server running"));
+      console.log(chalk.blue("  🔗 ") + chalk.bold.blue(`http://localhost:${PORT}`));
+      console.log(chalk.cyan("  Status: ") + chalk.bold.green("READY"));
       console.log("");
     });
   } catch (error) {
@@ -381,13 +301,18 @@ startServer();
 function getModuleIcon(module) {
   const icons = {
     account: "👤",
-    audit_logs: "📊",
+    audit_logs: "📊", 
     auth: "🔐",
-    hosts: "🖥️",
+    hosts: "🖥️ ",
     image: "💿",
     instance: "📦",
     network: "🌐",
     websocket: "🔌",
+    tray: "📟",
+    "2fa": "🔑",
+    settings: "⚙️ ",
+    migrate: "🔄",
+    snapshot: "📸"
   };
-  return icons[module] || "⚙️";
+  return icons[module] || "⚙️ ";
 }
