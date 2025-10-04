@@ -81,6 +81,18 @@ function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getUserFromJWT());
   const navigate = useNavigate();
 
+  const login = (token) => {
+    localStorage.setItem('jwt', token);
+    setUser(getUserFromJWT());
+    navigate('/dashboard', { replace: true });
+  };
+
+  const logout = () => {
+    localStorage.removeItem('jwt');
+    setUser(null);
+    navigate('/auth', { replace: true });
+  };
+
   useEffect(() => {
     const handler = () => setUser(getUserFromJWT());
     window.addEventListener('storage', handler);
@@ -97,18 +109,6 @@ function AuthProvider({ children }) {
 
     return () => clearInterval(tokenCheckInterval);
   }, [user, logout]);
-
-  const login = (token) => {
-    localStorage.setItem('jwt', token);
-    setUser(getUserFromJWT());
-    navigate('/dashboard', { replace: true });
-  };
-
-  const logout = () => {
-    localStorage.removeItem('jwt');
-    setUser(null);
-    navigate('/auth', { replace: true });
-  };
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
