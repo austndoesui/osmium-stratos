@@ -77,16 +77,19 @@ const UserAvatar = ({
         title={user?.username || user?.email || 'User'}
       >
         <img 
-          src="/user-avatar.png" 
+          src="/user-avatar.png?v=1" 
           alt={user?.username || 'User Avatar'}
           className="w-full h-full object-cover"
           onError={(e) => {
+            console.log('Avatar image failed to load:', e.target.src);
             // Try SVG fallback first
-            if (e.target.src.endsWith('.png')) {
+            if (e.target.src.includes('.png')) {
+              console.log('Trying SVG fallback...');
               e.target.src = '/user-avatar.svg';
               return;
             }
             // If SVG also fails, show initials
+            console.log('Using initials fallback...');
             e.target.style.display = 'none';
             const parent = e.target.parentElement;
             parent.innerHTML = initials;
