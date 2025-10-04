@@ -136,6 +136,53 @@ const userValidation = {
   ],
 };
 
+// Host management validation schemas
+const hostValidation = {
+  createHost: [
+    body("name")
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Host name must be between 1 and 100 characters")
+      .matches(/^[a-zA-Z0-9\s\-_.]+$/)
+      .withMessage(
+        "Host name can only contain letters, numbers, spaces, hyphens, underscores, and periods",
+      ),
+
+    body("address")
+      .trim()
+      .notEmpty()
+      .withMessage("Host address is required")
+      .isLength({ min: 1, max: 255 })
+      .withMessage("Host address must be between 1 and 255 characters"),
+
+    body("description")
+      .optional()
+      .trim()
+      .isLength({ max: 500 })
+      .withMessage("Description must be less than 500 characters"),
+
+    body("cert")
+      .optional()
+      .trim()
+      .isLength({ max: 10000 })
+      .withMessage("Certificate must be less than 10000 characters"),
+
+    body("key")
+      .optional()
+      .trim()
+      .isLength({ max: 10000 })
+      .withMessage("Private key must be less than 10000 characters"),
+
+    body("ca")
+      .optional()
+      .trim()
+      .isLength({ max: 10000 })
+      .withMessage("CA certificate must be less than 10000 characters"),
+
+    handleValidationErrors,
+  ],
+};
+
 // Instance management validation schemas
 const instanceValidation = {
   createInstance: [
@@ -198,6 +245,7 @@ const queryValidation = {
 module.exports = {
   authValidation,
   userValidation,
+  hostValidation,
   instanceValidation,
   idValidation,
   queryValidation,
