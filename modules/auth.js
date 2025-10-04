@@ -7,8 +7,8 @@ const JWT_SECRET = config.session.secret || 'replace-this-with-a-long-random-sec
 
 function setupAuth(router) {
   router.post("/login", async (req, res) => {
-    const { username, password, password_hash } = req.body;
-    if (!username || (!password && !password_hash)) {
+    const { username, password } = req.body;
+    if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required.' });
     }
     
@@ -31,12 +31,7 @@ function setupAuth(router) {
         return res.status(401).json({ error: 'Invalid username or password.' });
       }
       
-      let match = false;
-      if (password) {
-        match = await bcrypt.compare(password, user.passwordHash);
-      } else if (password_hash) {
-        match = password_hash === user.passwordHash;
-      }
+      const match = await bcrypt.compare(password, user.passwordHash);
       
       if (!match) {
         // Record failed attempt

@@ -616,14 +616,14 @@ router.get("/hosts/:id/vms/:name/console", (req, res) => {
 
 // ================= USERS =================
 router.post("/register", authValidation.register, async (req, res) => {
-  const { username, email, password, password_hash, role } = req.body;
-  if (!username || !email || (!password && !password_hash)) {
+  const { username, email, password, role } = req.body;
+  if (!username || !email || !password) {
     return res
       .status(400)
       .json({ error: "Username, email, and password are required." });
   }
   try {
-    const hash = password_hash || (await bcrypt.hash(password, 10));
+    const hash = await bcrypt.hash(password, 10);
     const userRole =
       role && (role === "admin" || role === "user") ? role : "user";
 
