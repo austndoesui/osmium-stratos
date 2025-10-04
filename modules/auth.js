@@ -22,28 +22,30 @@ function setupAuth(router) {
         }
       });
       
-      if (!user) {
-        // Record failed attempt
-        if (req.recordFailedAttempt) {
-          req.recordFailedAttempt();
-        }
-        console.warn(`🚨 Login failed - user not found: ${username} from ${req.ip}`);
-        return res.status(401).json({ error: 'Invalid username or password.' });
+      // Constant-time authentication check to prevent user enumeration
+      // Always perform bcrypt comparison, even if user doesn't exist
+      let match = false;
+      if (user) {
+        match = await bcrypt.compare(password, user.passwordHash);
+      } else {
+        // Perform dummy bcrypt operation with fixed hash to maintain constant timing
+        // This prevents timing attacks that could reveal whether a user exists
+        const dummyHash = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'; // dummy hash
+        await bcrypt.compare(password, dummyHash);
       }
       
-      const match = await bcrypt.compare(password, user.passwordHash);
-      
-      if (!match) {
+      if (!user || !match) {
         // Record failed attempt
         if (req.recordFailedAttempt) {
           req.recordFailedAttempt();
         }
-        console.warn(`🚨 Login failed - invalid password for user: ${username} from ${req.ip}`);
+        // Generic error message - don't reveal if user exists or password is wrong
+        console.warn(`🚨 Login failed for: ${username} from ${req.ip}`);
         return res.status(401).json({ error: "Invalid username or password." });
       }
       
       if (user.twoFaEnabled) {
-        console.log(`🔐 2FA required for user: ${username} from ${req.ip}`);
+        console.log(`🔐 2FA required from ${req.ip}`);
         // 2FA required, do not return token yet
         return res.json({ twofa_required: true, user_id: user.id });
       }
@@ -53,7 +55,7 @@ function setupAuth(router) {
         req.resetFailedAttempts();
       }
       
-      console.log(`✅ Login successful for user: ${username} from ${req.ip}`);
+      console.log(`✅ Login successful from ${req.ip}`);
       
       const token = jwt.sign(
         {

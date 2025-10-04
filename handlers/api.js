@@ -56,19 +56,17 @@ router.post(
         where: { id: user_id },
       });
 
-      if (!user) {
+      // Always attempt 2FA verification to prevent user enumeration
+      const valid = await verify2FA(user_id, token);
+      
+      if (!user || !valid) {
         // Record failed attempt
         if (req.recordFailedAttempt) {
           req.recordFailedAttempt();
         }
         console.warn(
-          `🚨 2FA verification failed - invalid user ID: ${user_id} from ${req.ip}`,
+          `🚨 2FA verification failed from ${req.ip}`,
         );
-        return res.status(401).json({ error: "Invalid user." });
-      }
-
-      const valid = await verify2FA(user_id, token);
-      if (!valid) {
         return res.status(401).json({ error: "Invalid 2FA code." });
       }
 
