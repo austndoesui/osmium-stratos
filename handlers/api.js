@@ -18,6 +18,7 @@ const speakeasy = require("speakeasy");
 const qrcode = require("qrcode");
 const crypto = require("crypto");
 const { migrateInstance } = require("../modules/migrate");
+const { cache, CACHE_TTL, cacheMiddleware, invalidateCache } = require("./cache");
 
 // Import validation schemas
 const {
@@ -101,7 +102,7 @@ router.post(
   },
 );
 // ================= HOSTS =================
-router.get("/hosts", async (req, res) => {
+router.get("/hosts", cacheMiddleware(CACHE_TTL.MEDIUM), async (req, res) => {
   try {
     const rows = await hosts.listHosts();
     res.json(rows);
@@ -110,7 +111,9 @@ router.get("/hosts", async (req, res) => {
   }
 });
 
-router.get("/hosts/:id", async (req, res) => {
+router.get("/hosts/:id", cacheMiddleware(CACHE_TTL.MEDIUM, (req) => 
+  cache.generateKey('host', req.params.id)
+), async (req, res) => {
   try {
     const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
@@ -133,6 +136,10 @@ router.post("/hosts", hostValidation.createHost, async (req, res) => {
       address = `${address}:8443`;
     }
     const result = await hosts.addHost({ name, address, description, cert, key, ca });
+    
+    // Invalidate hosts cache
+    invalidateCache(/^api:GET:\/hosts/);
+    
     res.status(201).json({ id: result.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -142,6 +149,12 @@ router.post("/hosts", hostValidation.createHost, async (req, res) => {
 router.delete("/hosts/:id", async (req, res) => {
   try {
     await hosts.deleteHost(req.params.id);
+    
+    // Invalidate related caches
+    invalidateCache(/^api:GET:\/hosts/);
+    invalidateCache(new RegExp(`^host:${req.params.id}`));
+    invalidateCache(/^vms:/);
+    
     res.status(204).end();
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -195,11 +208,18 @@ router.post("/hosts/:id/verify", async (req, res) => {
 });
 
 // ================= IMAGES =================
-router.get("/images", (req, res) => {
-  imageModule.getImages((err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.get("/images", cacheMiddleware(CACHE_TTL.LONG), async (req, res) => {
+  try {
+    const rows = await new Promise((resolve, reject) => {
+      imageModule.getImages((err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
     res.json(rows);
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post("/images", (req, res) => {
@@ -209,6 +229,10 @@ router.post("/images", (req, res) => {
   }
   imageModule.addImage({ label, value }, (err, result) => {
     if (err) return res.status(500).json({ error: err.message });
+    
+    // Invalidate images cache
+    invalidateCache(/^api:GET:\/images/);
+    
     res.status(201).json({ id: result.id });
   });
 });
@@ -216,6 +240,10 @@ router.post("/images", (req, res) => {
 router.delete("/images/:id", (req, res) => {
   imageModule.deleteImage(req.params.id, (err) => {
     if (err) return res.status(500).json({ error: err.message });
+    
+    // Invalidate images cache
+    invalidateCache(/^api:GET:\/images/);
+    
     res.status(204).end();
   });
 });
@@ -295,7 +323,9 @@ router.post("/hosts/:id/vms", async (req, res) => {
   }
 });
 
-router.get("/vms", async (req, res) => {
+router.get("/vms", cacheMiddleware(CACHE_TTL.SHORT, (req) => 
+  cache.generateKey('vms', 'all', req.user?.id || 'anonymous')
+), async (req, res) => {
   try {
     const hostRows = await hosts.listHosts();
     if (!hostRows.length) return res.json([]);
@@ -376,6 +406,11 @@ router.delete("/hosts/:id/vms/:name", async (req, res) => {
         name: req.params.name,
       },
     });
+    
+    // Invalidate VM-related caches
+    invalidateCache(/^vms:/);
+    invalidateCache(new RegExp(`^vm:${req.params.id}:${req.params.name}`));
+    
     res.status(204).end();
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -459,6 +494,11 @@ router.post("/hosts/:id/vms/:name/start", async (req, res) => {
       host_id: req.params.id,
       details: { result },
     });
+    
+    // Invalidate VM state caches
+    invalidateCache(/^vms:/);
+    invalidateCache(new RegExp(`^vm:${req.params.id}:${req.params.name}`));
+    
     res.status(200).json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -492,6 +532,11 @@ router.post("/hosts/:id/vms/:name/stop", async (req, res) => {
       host_id: req.params.id,
       details: { result },
     });
+    
+    // Invalidate VM state caches
+    invalidateCache(/^vms:/);
+    invalidateCache(new RegExp(`^vm:${req.params.id}:${req.params.name}`));
+    
     res.status(200).json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -525,6 +570,11 @@ router.post("/hosts/:id/vms/:name/restart", async (req, res) => {
       host_id: req.params.id,
       details: { result },
     });
+    
+    // Invalidate VM state caches
+    invalidateCache(/^vms:/);
+    invalidateCache(new RegExp(`^vm:${req.params.id}:${req.params.name}`));
+    
     res.status(200).json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -580,7 +630,7 @@ router.post("/register", authValidation.register, async (req, res) => {
   }
 });
 
-router.get("/users", (req, res) => {
+router.get("/users", cacheMiddleware(CACHE_TTL.MEDIUM), (req, res) => {
   getAllUsers((err, users) => {
     if (err) {
       return res.status(500).json({ error: "Failed to fetch users" });
@@ -598,6 +648,10 @@ router.delete("/users/:id", (req, res) => {
     if (result.changes === 0) {
       return res.status(404).json({ error: "User not found" });
     }
+    
+    // Invalidate users cache
+    invalidateCache(/^api:GET:\/users/);
+    
     res.json({ success: true });
   });
 });
@@ -1090,7 +1144,7 @@ router.post(
 );
 
 // ================= SETTINGS =================
-router.get("/settings", (req, res) => {
+router.get("/settings", cacheMiddleware(CACHE_TTL.VERY_LONG), (req, res) => {
   settings.getAllSettings((err, all) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(all);
@@ -1115,7 +1169,11 @@ router.post("/settings", router.ensureAuthenticated, (req, res) => {
         }),
     ),
   )
-    .then(() => res.json({ success: true }))
+    .then(() => {
+      // Invalidate settings cache
+      invalidateCache(/^api:GET:\/settings/);
+      res.json({ success: true });
+    })
     .catch((err) => res.status(500).json({ error: err.message }));
 });
 
@@ -1131,10 +1189,38 @@ router.post("/settings/reset", router.ensureAuthenticated, async (req, res) => {
         },
       },
     });
+    
+    // Invalidate settings cache
+    invalidateCache(/^api:GET:\/settings/);
+    
     res.json({ success: true });
   } catch (err) {
     console.error("Settings reset error:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
+// ================= CACHE MANAGEMENT =================
+router.get("/cache/stats", router.ensureAuthenticated, (req, res) => {
+  if (req.user.role !== "admin")
+    return res.status(403).json({ error: "Forbidden" });
+  
+  res.json(cache.getStats());
+});
+
+router.post("/cache/clear", router.ensureAuthenticated, (req, res) => {
+  if (req.user.role !== "admin")
+    return res.status(403).json({ error: "Forbidden" });
+  
+  const { pattern } = req.body;
+  
+  if (pattern) {
+    invalidateCache(new RegExp(pattern));
+    res.json({ success: true, message: `Cache cleared for pattern: ${pattern}` });
+  } else {
+    cache.clear();
+    res.json({ success: true, message: "All cache cleared" });
+  }
+});
+
 module.exports = router;
