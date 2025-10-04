@@ -19,6 +19,7 @@ const qrcode = require("qrcode");
 const crypto = require("crypto");
 const { migrateInstance } = require("../modules/migrate");
 const { cache, CACHE_TTL, cacheMiddleware, invalidateCache } = require("./cache");
+const { jobQueue, jobProcessors } = require("./jobQueue");
 
 // Import validation schemas
 const {
@@ -267,7 +268,7 @@ router.post("/hosts/:id/images", async (req, res) => {
 // ================= INSTANCES =================
 router.post("/hosts/:id/vms", async (req, res) => {
   try {
-    const { name, imageAlias, type, user_id, cpu, ram, disk } = req.body;
+    const { name, imageAlias, type, user_id, cpu, ram, disk, useQueue = true } = req.body;
     if (!name || !imageAlias) {
       return res
         .status(400)
@@ -286,37 +287,61 @@ router.post("/hosts/:id/vms", async (req, res) => {
     const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
     
-    const result = await new Promise((resolve, reject) => {
-      instance.createVM(
-        host,
-        { name, imageAlias, type, cpu, ram, disk },
-        (err, result) => {
-          if (err) reject(err);
-          else resolve(result);
-        }
-      );
-    });
-    
-    try {
-      const instanceRecord = await prisma.instance.create({
-        data: {
-          name,
-          hostId: host.id,
-          lxdName: name,
-          userId: user_id || null,
-          cpu: cpu || null,
-          ram: ram || null,
-          disk: disk || null,
-          imageAlias,
+    // Use background job queue for heavy instance creation
+    if (useQueue) {
+      const jobId = jobQueue.addJob(
+        'createInstance',
+        {
+          host,
+          instanceConfig: { name, imageAlias, type, cpu, ram, disk },
+          userId: user_id
         },
+        jobProcessors.createInstance,
+        { priority: 1 }
+      );
+      
+      res.status(202).json({ 
+        jobId,
+        message: "Instance creation started in background",
+        status: "processing"
       });
-      res.status(201).json({ ...result, instance_id: instanceRecord.id });
-    } catch (dbErr) {
-      // Still return LXD result, but warn about DB
-      res.status(201).json({
-        ...result,
-        dbWarning: "Instance created in LXD but not saved in DB.",
+    } else {
+      // Synchronous creation (for compatibility)
+      const result = await new Promise((resolve, reject) => {
+        instance.createVM(
+          host,
+          { name, imageAlias, type, cpu, ram, disk },
+          (err, result) => {
+            if (err) reject(err);
+            else resolve(result);
+          }
+        );
       });
+      
+      try {
+        const instanceRecord = await prisma.instance.create({
+          data: {
+            name,
+            hostId: host.id,
+            lxdName: name,
+            userId: user_id || null,
+            cpu: cpu || null,
+            ram: ram || null,
+            disk: disk || null,
+            imageAlias,
+          },
+        });
+        
+        // Invalidate caches
+        invalidateCache(/^vms:/);
+        
+        res.status(201).json({ ...result, instance_id: instanceRecord.id });
+      } catch (dbErr) {
+        res.status(201).json({
+          ...result,
+          dbWarning: "Instance created in LXD but not saved in DB.",
+        });
+      }
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -330,30 +355,34 @@ router.get("/vms", cacheMiddleware(CACHE_TTL.SHORT, (req) =>
     const hostRows = await hosts.listHosts();
     if (!hostRows.length) return res.json([]);
     
-    let results = [];
-    for (const host of hostRows) {
-      try {
-        const vms = await new Promise((resolve, reject) => {
-          instance.listVMsOnHost(host, (err, v) => {
-            if (err) reject(err);
-            else resolve(v);
-          });
-        });
-        
-        if (vms.error) {
-          results.push({
-            host: { id: host.id, name: host.name, address: host.address },
-            vms: { error: vms.error },
-          });
-        } else {
-          const dbInstances = await prisma.instance.findMany({
-            where: { hostId: host.id },
-            include: {
-              user: {
-                select: { username: true, email: true },
+    // Process all hosts in parallel instead of sequentially
+    const results = await Promise.all(
+      hostRows.map(async (host) => {
+        try {
+          // Run VM listing and DB query in parallel
+          const [vms, dbInstances] = await Promise.all([
+            new Promise((resolve, reject) => {
+              instance.listVMsOnHost(host, (err, v) => {
+                if (err) reject(err);
+                else resolve(v);
+              });
+            }),
+            prisma.instance.findMany({
+              where: { hostId: host.id },
+              include: {
+                user: {
+                  select: { username: true, email: true },
+                },
               },
-            },
-          });
+            })
+          ]);
+          
+          if (vms.error) {
+            return {
+              host: { id: host.id, name: host.name, address: host.address },
+              vms: { error: vms.error },
+            };
+          }
           
           const vmsWithOwner = Array.isArray(vms)
             ? vms.map((vm) => {
@@ -369,18 +398,18 @@ router.get("/vms", cacheMiddleware(CACHE_TTL.SHORT, (req) =>
               })
             : vms;
             
-          results.push({
+          return {
             host: { id: host.id, name: host.name, address: host.address },
             vms: vmsWithOwner,
-          });
+          };
+        } catch (hostError) {
+          return {
+            host: { id: host.id, name: host.name, address: host.address },
+            vms: { error: hostError.message },
+          };
         }
-      } catch (hostError) {
-        results.push({
-          host: { id: host.id, name: host.name, address: host.address },
-          vms: { error: hostError.message },
-        });
-      }
-    }
+      })
+    );
     
     res.json(results);
   } catch (err) {
@@ -877,15 +906,24 @@ router.post(
   },
 );
 // ================= INSTANCE UTILS =================
-router.get("/hosts/:id/vms/:name/usage", (req, res) => {
-  hosts.getHost(req.params.id, (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.get("/hosts/:id/vms/:name/usage", cacheMiddleware(CACHE_TTL.VERY_SHORT, (req) => 
+  cache.generateKey('vm_usage', req.params.id, req.params.name)
+), async (req, res) => {
+  try {
+    const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.getInstanceUsage(host, req.params.name, (err, usage) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.status(200).json(usage);
+    
+    const usage = await new Promise((resolve, reject) => {
+      instance.getInstanceUsage(host, req.params.name, (err, usage) => {
+        if (err) reject(err);
+        else resolve(usage);
+      });
     });
-  });
+    
+    res.status(200).json(usage);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get("/hosts/:id/vms/:name/config", async (req, res) => {
@@ -956,40 +994,52 @@ router.delete(
 );
 
 router.post("/hosts/:id/vms/:name/resize", async (req, res) => {
-  const { cpu, ram, disk } = req.body;
-  hosts.getHost(req.params.id, async (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const { cpu, ram, disk } = req.body;
+    const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.resizeInstance(
-      host,
-      req.params.name,
-      { cpu, ram, disk },
-      async (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-
-        try {
-          await prisma.instance.updateMany({
-            where: {
-              hostId: host.id,
-              name: req.params.name,
-            },
-            data: {
-              cpu: cpu || null,
-              ram: ram || null,
-              disk: disk || null,
-            },
-          });
-          res.status(200).json({ ...result });
-        } catch (dbErr) {
-          console.error("Failed to update instance specs in DB:", dbErr);
-          res.status(200).json({
-            ...result,
-            dbWarning: "Specs updated in LXD but not saved in DB.",
-          });
+    
+    // Run resize operation and database update in parallel after resize completes
+    const result = await new Promise((resolve, reject) => {
+      instance.resizeInstance(
+        host,
+        req.params.name,
+        { cpu, ram, disk },
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
         }
-      },
-    );
-  });
+      );
+    });
+
+    try {
+      await prisma.instance.updateMany({
+        where: {
+          hostId: host.id,
+          name: req.params.name,
+        },
+        data: {
+          cpu: cpu || null,
+          ram: ram || null,
+          disk: disk || null,
+        },
+      });
+      
+      // Invalidate relevant caches
+      invalidateCache(/^vms:/);
+      invalidateCache(new RegExp(`^vm:${req.params.id}:${req.params.name}`));
+      
+      res.status(200).json({ ...result });
+    } catch (dbErr) {
+      console.error("Failed to update instance specs in DB:", dbErr);
+      res.status(200).json({
+        ...result,
+        dbWarning: "Specs updated in LXD but not saved in DB.",
+      });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post("/hosts/:hostId/vms/:instanceName/snapshots", (req, res) => {
@@ -1127,21 +1177,157 @@ router.post(
   "/hosts/:sourceHostId/vms/:instanceName/migrate",
   async (req, res) => {
     const { sourceHostId, instanceName } = req.params;
-    const { targetHostId } = req.body;
+    const { targetHostId, useQueue = true } = req.body;
     if (!targetHostId)
       return res.status(400).json({ error: "targetHostId is required" });
+      
     try {
-      const result = await migrateInstance({
-        sourceHostId,
-        targetHostId,
-        instanceName,
-      });
-      res.json(result);
+      if (useQueue) {
+        // Use background job queue for migration
+        const jobId = jobQueue.addJob(
+          'migrateInstance',
+          { sourceHostId, targetHostId, instanceName },
+          jobProcessors.migrateInstance,
+          { priority: 3 } // High priority for migrations
+        );
+        
+        res.status(202).json({
+          jobId,
+          message: "Instance migration started in background",
+          status: "processing"
+        });
+      } else {
+        // Synchronous migration
+        const result = await migrateInstance({
+          sourceHostId,
+          targetHostId,
+          instanceName,
+        });
+        res.json(result);
+      }
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   },
 );
+
+// ================= JOB MANAGEMENT =================
+router.get("/jobs", router.ensureAuthenticated, (req, res) => {
+  const { status, type } = req.query;
+  const jobs = jobQueue.getJobs({ status, type });
+  
+  // Filter sensitive data for non-admin users
+  if (req.user.role !== "admin") {
+    const filteredJobs = jobs.map(job => ({
+      id: job.id,
+      type: job.type,
+      status: job.status,
+      progress: job.progress,
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      error: job.error
+    }));
+    return res.json(filteredJobs);
+  }
+  
+  res.json(jobs);
+});
+
+router.get("/jobs/:id", router.ensureAuthenticated, (req, res) => {
+  const job = jobQueue.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "Job not found" });
+  }
+  
+  // Filter sensitive data for non-admin users
+  if (req.user.role !== "admin") {
+    const filteredJob = {
+      id: job.id,
+      type: job.type,
+      status: job.status,
+      progress: job.progress,
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      error: job.error,
+      result: job.result
+    };
+    return res.json(filteredJob);
+  }
+  
+  res.json(job);
+});
+
+router.post("/jobs/:id/cancel", router.ensureAuthenticated, (req, res) => {
+  const job = jobQueue.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "Job not found" });
+  }
+  
+  // Only allow admins or job creators to cancel
+  if (req.user.role !== "admin" && job.data.userId !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  
+  const cancelled = jobQueue.cancelJob(req.params.id);
+  if (cancelled) {
+    res.json({ success: true, message: "Job cancelled" });
+  } else {
+    res.status(400).json({ error: "Job cannot be cancelled" });
+  }
+});
+
+router.get("/jobs/stats", router.ensureAuthenticated, (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  
+  res.json(jobQueue.getStats());
+});
+
+// Bulk operations endpoint
+router.post("/vms/bulk/:operation", router.ensureAuthenticated, async (req, res) => {
+  const { operation } = req.params;
+  const { instances } = req.body; // Array of {hostId, instanceName}
+  
+  if (!['start', 'stop', 'restart'].includes(operation)) {
+    return res.status(400).json({ error: "Invalid operation" });
+  }
+  
+  if (!instances || !Array.isArray(instances) || instances.length === 0) {
+    return res.status(400).json({ error: "Instances array is required" });
+  }
+  
+  try {
+    // Prepare operations with host data in parallel
+    const operations = await Promise.all(
+      instances.map(async (inst) => {
+        const host = await hosts.getHost(inst.hostId);
+        return {
+          host,
+          instanceName: inst.instanceName,
+          hostId: inst.hostId
+        };
+      })
+    );
+    
+    const jobId = jobQueue.addJob(
+      'bulkOperation',
+      { operations, type: operation },
+      jobProcessors.bulkOperation,
+      { priority: 2 }
+    );
+    
+    res.status(202).json({
+      jobId,
+      message: `Bulk ${operation} operation started`,
+      affectedInstances: instances.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ================= SETTINGS =================
 router.get("/settings", cacheMiddleware(CACHE_TTL.VERY_LONG), (req, res) => {
