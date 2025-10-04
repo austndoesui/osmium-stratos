@@ -3,31 +3,31 @@ const https = require('https');
 const { copyImageToHost: imageCopyImageToHost } = require('./image');
 
 // List all LXD hosts from the database
-async function listHosts(callback) {
+async function listHosts() {
   try {
     const hosts = await prisma.host.findMany({
       orderBy: { createdAt: 'desc' }
     });
-    callback(null, hosts);
+    return hosts;
   } catch (error) {
-    callback(error);
+    throw error;
   }
 }
 
 // Get a single LXD host by ID
-async function getHost(id, callback) {
+async function getHost(id) {
   try {
     const host = await prisma.host.findUnique({
       where: { id: parseInt(id) }
     });
-    callback(null, host);
+    return host;
   } catch (error) {
-    callback(error);
+    throw error;
   }
 }
 
 // Add a new LXD host to the database
-async function addHost({ name, address, description, cert, key, ca }, callback) {
+async function addHost({ name, address, description, cert, key, ca }) {
   try {
     const host = await prisma.host.create({
       data: {
@@ -39,72 +39,82 @@ async function addHost({ name, address, description, cert, key, ca }, callback) 
         ca
       }
     });
-    callback(null, { id: host.id });
+    return { id: host.id };
   } catch (error) {
-    callback(error);
+    throw error;
   }
 }
 
 // Delete a host from the database by ID
-async function deleteHost(id, callback) {
+async function deleteHost(id) {
   try {
     await prisma.host.delete({
       where: { id: parseInt(id) }
     });
-    callback(null);
+    return true;
   } catch (error) {
-    callback(error);
+    throw error;
   }
 }
 
 // Poll an LXD operation until it completes (success or error)
-function pollLXDOperation(host, operationUrl, callback) {
-  const url = new URL(host.address);
-  const opPath = new URL(operationUrl, host.address).pathname + '/wait?timeout=30';
-  const options = {
-    hostname: url.hostname,
-    port: url.port,
-    path: opPath,
-    method: 'GET',
-    cert: host.cert,
-    key: host.key,
-    ca: host.ca || undefined,
-    rejectUnauthorized: false,
-    timeout: 35000,
-  };
-  const req = https.request(options, (res) => {
-    let data = '';
-    res.on('data', (chunk) => { data += chunk; });
-    res.on('end', () => {
-      try {
-        const parsed = JSON.parse(data);
-        if (parsed && parsed.metadata && parsed.metadata.status === 'Success') {
-          callback(null, parsed);
-        } else {
-          callback(new Error(parsed.metadata && parsed.metadata.err ? parsed.metadata.err : 'LXD operation failed'));
+function pollLXDOperation(host, operationUrl) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(host.address);
+    const opPath = new URL(operationUrl, host.address).pathname + '/wait?timeout=30';
+    const options = {
+      hostname: url.hostname,
+      port: url.port,
+      path: opPath,
+      method: 'GET',
+      cert: host.cert,
+      key: host.key,
+      ca: host.ca || undefined,
+      rejectUnauthorized: false,
+      timeout: 35000,
+    };
+    
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed && parsed.metadata && parsed.metadata.status === 'Success') {
+            resolve(parsed);
+          } else {
+            reject(new Error(parsed.metadata && parsed.metadata.err ? parsed.metadata.err : 'LXD operation failed'));
+          }
+        } catch (e) {
+          reject(new Error('Failed to parse LXD operation response'));
         }
-      } catch (e) {
-        callback(new Error('Failed to parse LXD operation response'));
-      }
+      });
     });
+    
+    req.on('error', (err) => reject(err));
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Operation polling timed out'));
+    });
+    req.end();
   });
-  req.on('error', (err) => callback(err));
-  req.on('timeout', () => {
-    req.destroy();
-    callback(new Error('Operation polling timed out'));
-  });
-  req.end();
 }
 
 // Copy/import an image to a host (calls image.js logic and polls operation)
-function copyImageToHost(host, imageAlias, callback) {
-  imageCopyImageToHost(host, imageAlias, (err, result) => {
-    if (err) return callback(err);
-    pollLXDOperation(host, result.resp.operation, (err, opResult) => {
-      if (err) return callback(err);
-      callback(null, { name: result.name, opResult });
+async function copyImageToHost(host, imageAlias) {
+  try {
+    const result = await new Promise((resolve, reject) => {
+      imageCopyImageToHost(host, imageAlias, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
     });
-  });
+    
+    const opResult = await pollLXDOperation(host, result.resp.operation);
+    return { name: result.name, opResult };
+  } catch (error) {
+    throw error;
+  }
 }
 
 module.exports = {

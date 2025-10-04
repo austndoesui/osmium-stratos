@@ -101,52 +101,58 @@ router.post(
   },
 );
 // ================= HOSTS =================
-router.get("/hosts", (req, res) => {
-  hosts.listHosts((err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.get("/hosts", async (req, res) => {
+  try {
+    const rows = await hosts.listHosts();
     res.json(rows);
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.get("/hosts/:id", (req, res) => {
-  hosts.getHost(req.params.id, (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.get("/hosts/:id", async (req, res) => {
+  try {
+    const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
     res.json(host);
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post("/hosts", hostValidation.createHost, (req, res) => {
-  let { name, address, description, cert, key, ca } = req.body;
-  if (!name || !address) {
-    return res.status(400).json({ error: "Name and address are required" });
+router.post("/hosts", hostValidation.createHost, async (req, res) => {
+  try {
+    let { name, address, description, cert, key, ca } = req.body;
+    if (!name || !address) {
+      return res.status(400).json({ error: "Name and address are required" });
+    }
+    if (!/^https?:\/\//.test(address)) {
+      address = `https://${address}`;
+    }
+    if (!/:[0-9]+$/.test(address)) {
+      address = `${address}:8443`;
+    }
+    const result = await hosts.addHost({ name, address, description, cert, key, ca });
+    res.status(201).json({ id: result.id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  if (!/^https?:\/\//.test(address)) {
-    address = `https://${address}`;
-  }
-  if (!/:[0-9]+$/.test(address)) {
-    address = `${address}:8443`;
-  }
-  hosts.addHost(
-    { name, address, description, cert, key, ca },
-    (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.status(201).json({ id: result.id });
-    },
-  );
 });
 
-router.delete("/hosts/:id", (req, res) => {
-  hosts.deleteHost(req.params.id, (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.delete("/hosts/:id", async (req, res) => {
+  try {
+    await hosts.deleteHost(req.params.id);
     res.status(204).end();
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post("/hosts/:id/verify", (req, res) => {
-  hosts.getHost(req.params.id, (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.post("/hosts/:id/verify", async (req, res) => {
+  try {
+    const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
+    
     let responded = false;
     const done = (data) => {
       if (!responded) {
@@ -154,6 +160,7 @@ router.post("/hosts/:id/verify", (req, res) => {
         res.status(200).json(data);
       }
     };
+    
     const reqHttps = require("https").request(
       {
         hostname: new URL(host.address).hostname,
@@ -182,7 +189,9 @@ router.post("/hosts/:id/verify", (req, res) => {
       done({ status: "offline", error: "Connection timed out" });
     });
     reqHttps.end();
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ================= IMAGES =================
@@ -211,142 +220,166 @@ router.delete("/images/:id", (req, res) => {
   });
 });
 
-router.post("/hosts/:id/images", (req, res) => {
-  const { imageAlias } = req.body;
-  if (!imageAlias) {
-    return res.status(400).json({ error: "Image alias is required" });
-  }
-  hosts.getHost(req.params.id, (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.post("/hosts/:id/images", async (req, res) => {
+  try {
+    const { imageAlias } = req.body;
+    if (!imageAlias) {
+      return res.status(400).json({ error: "Image alias is required" });
+    }
+    const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
-    hosts.copyImageToHost(host, imageAlias, (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.status(201).json({ message: "Image saved", result });
-    });
-  });
+    
+    const result = await hosts.copyImageToHost(host, imageAlias);
+    res.status(201).json({ message: "Image saved", result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ================= INSTANCES =================
 router.post("/hosts/:id/vms", async (req, res) => {
-  const { name, imageAlias, type, user_id, cpu, ram, disk } = req.body;
-  if (!name || !imageAlias) {
-    return res
-      .status(400)
-      .json({ error: "Instance name and image alias are required" });
-  }
-  if (user_id) {
-    const user = await prisma.user.findUnique({
-      where: { id: user_id },
-    });
-    if (!user) {
-      return res.status(400).json({ error: "Selected user does not exist" });
+  try {
+    const { name, imageAlias, type, user_id, cpu, ram, disk } = req.body;
+    if (!name || !imageAlias) {
+      return res
+        .status(400)
+        .json({ error: "Instance name and image alias are required" });
     }
-  }
-  hosts.getHost(req.params.id, async (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
+    
+    if (user_id) {
+      const user = await prisma.user.findUnique({
+        where: { id: user_id },
+      });
+      if (!user) {
+        return res.status(400).json({ error: "Selected user does not exist" });
+      }
+    }
+    
+    const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.createVM(
-      host,
-      { name, imageAlias, type, cpu, ram, disk },
-      async (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        try {
-          const instance = await prisma.instance.create({
-            data: {
-              name,
-              hostId: host.id,
-              lxdName: name,
-              userId: user_id || null,
-              cpu: cpu || null,
-              ram: ram || null,
-              disk: disk || null,
-              imageAlias,
-            },
-          });
-          res.status(201).json({ ...result, instance_id: instance.id });
-        } catch (dbErr) {
-          // Still return LXD result, but warn about DB
-          return res.status(201).json({
-            ...result,
-            dbWarning: "Instance created in LXD but not saved in DB.",
-          });
+    
+    const result = await new Promise((resolve, reject) => {
+      instance.createVM(
+        host,
+        { name, imageAlias, type, cpu, ram, disk },
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
         }
-      },
-    );
-  });
+      );
+    });
+    
+    try {
+      const instanceRecord = await prisma.instance.create({
+        data: {
+          name,
+          hostId: host.id,
+          lxdName: name,
+          userId: user_id || null,
+          cpu: cpu || null,
+          ram: ram || null,
+          disk: disk || null,
+          imageAlias,
+        },
+      });
+      res.status(201).json({ ...result, instance_id: instanceRecord.id });
+    } catch (dbErr) {
+      // Still return LXD result, but warn about DB
+      res.status(201).json({
+        ...result,
+        dbWarning: "Instance created in LXD but not saved in DB.",
+      });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get("/vms", async (req, res) => {
-  const hostRows = await new Promise((resolve, reject) => {
-    hosts.listHosts((err, hosts) => {
-      if (err) reject(err);
-      else resolve(hosts);
-    });
-  });
-  if (!hostRows.length) return res.json([]);
-  let results = [];
-  let completed = 0;
-  for (const host of hostRows) {
-    const vms = await new Promise((resolve, reject) => {
-      instance.listVMsOnHost(host, (err, v) => {
-        if (err) reject(err);
-        else resolve(v);
-      });
-    });
-    if (vms.error) {
-      results.push({
-        host: { id: host.id, name: host.name, address: host.address },
-        vms: { error: vms.error },
-      });
-    } else {
-      const dbInstances = await prisma.instance.findMany({
-        where: { hostId: host.id },
-        include: {
-          user: {
-            select: { username: true, email: true },
-          },
-        },
-      });
-      const vmsWithOwner = Array.isArray(vms)
-        ? vms.map((vm) => {
-            const dbInst = dbInstances.find((i) => i.name === vm.name);
-            return {
-              ...vm,
-              owner:
-                dbInst && dbInst.user
-                  ? { username: dbInst.user.username, email: dbInst.user.email }
-                  : null,
-              image: dbInst && dbInst.imageAlias ? dbInst.imageAlias : vm.image,
-            };
-          })
-        : vms;
-      results.push({
-        host: { id: host.id, name: host.name, address: host.address },
-        vms: vmsWithOwner,
-      });
+  try {
+    const hostRows = await hosts.listHosts();
+    if (!hostRows.length) return res.json([]);
+    
+    let results = [];
+    for (const host of hostRows) {
+      try {
+        const vms = await new Promise((resolve, reject) => {
+          instance.listVMsOnHost(host, (err, v) => {
+            if (err) reject(err);
+            else resolve(v);
+          });
+        });
+        
+        if (vms.error) {
+          results.push({
+            host: { id: host.id, name: host.name, address: host.address },
+            vms: { error: vms.error },
+          });
+        } else {
+          const dbInstances = await prisma.instance.findMany({
+            where: { hostId: host.id },
+            include: {
+              user: {
+                select: { username: true, email: true },
+              },
+            },
+          });
+          
+          const vmsWithOwner = Array.isArray(vms)
+            ? vms.map((vm) => {
+                const dbInst = dbInstances.find((i) => i.name === vm.name);
+                return {
+                  ...vm,
+                  owner:
+                    dbInst && dbInst.user
+                      ? { username: dbInst.user.username, email: dbInst.user.email }
+                      : null,
+                  image: dbInst && dbInst.imageAlias ? dbInst.imageAlias : vm.image,
+                };
+              })
+            : vms;
+            
+          results.push({
+            host: { id: host.id, name: host.name, address: host.address },
+            vms: vmsWithOwner,
+          });
+        }
+      } catch (hostError) {
+        results.push({
+          host: { id: host.id, name: host.name, address: host.address },
+          vms: { error: hostError.message },
+        });
+      }
     }
-    completed++;
-    if (completed === hostRows.length) {
-      res.json(results);
-    }
+    
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
 router.delete("/hosts/:id/vms/:name", async (req, res) => {
-  hosts.getHost(req.params.id, async (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.deleteInstance(host, req.params.name, async (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      await prisma.instance.deleteMany({
-        where: {
-          hostId: host.id,
-          name: req.params.name,
-        },
+    
+    const result = await new Promise((resolve, reject) => {
+      instance.deleteInstance(host, req.params.name, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
       });
-      res.status(204).end();
     });
-  });
+    
+    await prisma.instance.deleteMany({
+      where: {
+        hostId: host.id,
+        name: req.params.name,
+      },
+    });
+    res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get("/instances/:id/audit-logs", async (req, res) => {
@@ -400,81 +433,102 @@ router.get("/hosts/:id/vms/:name/history", async (req, res) => {
 });
 
 router.post("/hosts/:id/vms/:name/start", async (req, res) => {
-  hosts.getHost(req.params.id, async (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.startInstance(host, req.params.name, async (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      const inst = await prisma.instance.findFirst({
-        where: {
-          name: req.params.name,
-          hostId: parseInt(req.params.id),
-        },
+    
+    const result = await new Promise((resolve, reject) => {
+      instance.startInstance(host, req.params.name, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
       });
-      auditLogs.addAuditLog({
-        user_id: req.user?.id || null,
-        username: req.user?.username || "system",
-        action: "start",
-        instance_id: inst?.id,
-        instance_name: req.params.name,
-        host_id: req.params.id,
-        details: { result },
-      });
-      res.status(200).json(result);
     });
-  });
+    
+    const inst = await prisma.instance.findFirst({
+      where: {
+        name: req.params.name,
+        hostId: parseInt(req.params.id),
+      },
+    });
+    auditLogs.addAuditLog({
+      user_id: req.user?.id || null,
+      username: req.user?.username || "system",
+      action: "start",
+      instance_id: inst?.id,
+      instance_name: req.params.name,
+      host_id: req.params.id,
+      details: { result },
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post("/hosts/:id/vms/:name/stop", async (req, res) => {
-  hosts.getHost(req.params.id, async (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.stopInstance(host, req.params.name, async (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      const inst = await prisma.instance.findFirst({
-        where: {
-          name: req.params.name,
-          hostId: parseInt(req.params.id),
-        },
+    
+    const result = await new Promise((resolve, reject) => {
+      instance.stopInstance(host, req.params.name, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
       });
-      auditLogs.addAuditLog({
-        user_id: req.user?.id || null,
-        username: req.user?.username || "system",
-        action: "stop",
-        instance_id: inst?.id,
-        instance_name: req.params.name,
-        host_id: req.params.id,
-        details: { result },
-      });
-      res.status(200).json(result);
     });
-  });
+    
+    const inst = await prisma.instance.findFirst({
+      where: {
+        name: req.params.name,
+        hostId: parseInt(req.params.id),
+      },
+    });
+    auditLogs.addAuditLog({
+      user_id: req.user?.id || null,
+      username: req.user?.username || "system",
+      action: "stop",
+      instance_id: inst?.id,
+      instance_name: req.params.name,
+      host_id: req.params.id,
+      details: { result },
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post("/hosts/:id/vms/:name/restart", async (req, res) => {
-  hosts.getHost(req.params.id, async (err, host) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const host = await hosts.getHost(req.params.id);
     if (!host) return res.status(404).json({ error: "Host not found" });
-    instance.restartInstance(host, req.params.name, async (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      const inst = await prisma.instance.findFirst({
-        where: {
-          name: req.params.name,
-          hostId: parseInt(req.params.id),
-        },
+    
+    const result = await new Promise((resolve, reject) => {
+      instance.restartInstance(host, req.params.name, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
       });
-      auditLogs.addAuditLog({
-        user_id: req.user?.id || null,
-        username: req.user?.username || "system",
-        action: "restart",
-        instance_id: inst?.id,
-        instance_name: req.params.name,
-        host_id: req.params.id,
-        details: { result },
-      });
-      res.status(200).json(result);
     });
-  });
+    
+    const inst = await prisma.instance.findFirst({
+      where: {
+        name: req.params.name,
+        hostId: parseInt(req.params.id),
+      },
+    });
+    auditLogs.addAuditLog({
+      user_id: req.user?.id || null,
+      username: req.user?.username || "system",
+      action: "restart",
+      instance_id: inst?.id,
+      instance_name: req.params.name,
+      host_id: req.params.id,
+      details: { result },
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get("/hosts/:id/vms/:name/console", (req, res) => {
