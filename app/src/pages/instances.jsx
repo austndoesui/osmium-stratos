@@ -1,14 +1,18 @@
 import '../index.css';
-import { useState, useEffect, useContext } from 'react';
+import { useState, useContext, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../App';
 import MainLayout from '../components/mainlayout';
+import { useVMs, useImages } from '../hooks/useApi';
 
 function Instances() {
-  const [vms, setVMs] = useState([]);
-  const [flatInstances, setFlatInstances] = useState([]);
-  const [loadingVMs, setLoadingVMs] = useState(true);
-  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
+  
+  // Use React Query hooks for data fetching
+  const { data: vms = [], isLoading: loadingVMs, refetch } = useVMs();
+  const { data: images = [] } = useImages();
+  
   const [instanceConfigs, setInstanceConfigs] = useState({});
   const [loadingConfigs, setLoadingConfigs] = useState({});
   const [gridLayout, setGridLayout] = useState(() => {
@@ -16,60 +20,56 @@ function Instances() {
     if (savedLayout === 'default') return 'wide';
     return savedLayout || 'full';
   });
-  const navigate = useNavigate();
-  const { logout, user } = useContext(AuthContext);
-  const [images, setImages] = useState([]);
 
-  const fetchInstanceConfig = async (hostId, instanceName) => {
-    setLoadingConfigs(prev => ({ ...prev, [`${hostId}-${instanceName}`]: true }));
+  // Memoize expensive calculations
+  const flatInstances = useMemo(() => {
+    const allInstances = [];
+    vms.forEach(({ host, vms: hostVms }) => {
+      if (Array.isArray(hostVms)) {
+        hostVms.forEach(vm => {
+          allInstances.push({ ...vm, host });
+        });
+      }
+    });
+    return allInstances;
+  }, [vms]);
+
+  // Optimized config fetching with debouncing
+  const fetchInstanceConfig = useCallback(async (hostId, instanceName) => {
+    const key = `${hostId}-${instanceName}`;
+    if (instanceConfigs[key] || loadingConfigs[key]) return; // Already fetched or loading
+
+    setLoadingConfigs(prev => ({ ...prev, [key]: true }));
     try {
       const res = await fetch(`/api/hosts/${hostId}/vms/${encodeURIComponent(instanceName)}/config`);
       if (res.ok) {
         const data = await res.json();
-        setInstanceConfigs(prev => ({ ...prev, [`${hostId}-${instanceName}`]: data }));
+        setInstanceConfigs(prev => ({ ...prev, [key]: data }));
       }
     } catch (error) {
       console.error('Error fetching instance config:', error);
     } finally {
-      setLoadingConfigs(prev => ({ ...prev, [`${hostId}-${instanceName}`]: false }));
+      setLoadingConfigs(prev => ({ ...prev, [key]: false }));
     }
-  };
+  }, [instanceConfigs, loadingConfigs]);
 
+  // Load configs for visible instances
   useEffect(() => {
-    setLoadingVMs(true);
-    fetch('/api/images')
-      .then(res => res.json())
-      .then(setImages)
-      .catch(() => setImages([]));
-    fetch('/api/vms')
-      .then(res => res.json())
-      .then(data => {
-        setVMs(data);
-        const allInstances = [];
-        data.forEach(({ host, vms }) => {
-          if (Array.isArray(vms)) {
-            vms.forEach(vm => {
-              allInstances.push({ ...vm, host });
-              fetchInstanceConfig(host.id, vm.name);
-            });
-          }
-        });
-        setFlatInstances(allInstances);
-      })
-      .catch(() => {
-        setVMs([]);
-        setFlatInstances([]);
-      })
-      .finally(() => setLoadingVMs(false));
-  }, []);
+    flatInstances.forEach(vm => {
+      fetchInstanceConfig(vm.host.id, vm.name);
+    });
+  }, [flatInstances, fetchInstanceConfig]);
 
-  const userInstances = flatInstances.filter(vm => {
-    if (!vm.owner || !user) return false;
-    return (
-      (vm.owner.username && vm.owner.username === user.username) ||
-      (vm.owner.email && vm.owner.email === user.email)
-    );
-  });
+  // Filter user instances
+  const userInstances = useMemo(() => {
+    return flatInstances.filter(vm => {
+      if (!vm.owner || !user) return false;
+      return (
+        (vm.owner.username && vm.owner.username === user.username) ||
+        (vm.owner.email && vm.owner.email === user.email)
+      );
+    });
+  }, [flatInstances, user]);
 
   const getImageLabel = (alias) => {
     if (!alias) return '';
@@ -129,29 +129,8 @@ function Instances() {
           
           <button
             className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center"
-            onClick={() => {
-              setLoadingVMs(true);
-              fetch('/api/vms')
-                .then(res => res.json())
-                .then(data => {
-                  setVMs(data);
-                  const allInstances = [];
-                  data.forEach(({ host, vms }) => {
-                    if (Array.isArray(vms)) {
-                      vms.forEach(vm => {
-                        allInstances.push({ ...vm, host });
-                        fetchInstanceConfig(host.id, vm.name);
-                      });
-                    }
-                  });
-                  setFlatInstances(allInstances);
-                })
-                .catch(() => {
-                  setVMs([]);
-                  setFlatInstances([]);
-                })
-                .finally(() => setLoadingVMs(false));
-            }}
+            onClick={() => refetch()}
+            disabled={loadingVMs}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />

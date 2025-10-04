@@ -2,6 +2,7 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import { useNotification } from "../../providers/NotificationProvider";
+import UserAvatar from "../../components/UserAvatar";
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
@@ -116,27 +117,6 @@ export default function AdminUsers() {
         setError(err.message);
       })
       .finally(() => setSubmitting(false));
-  };
-
-  const getAvatar = (user) => {
-    if (user.avatar) {
-      return (
-        <img
-          src={user.avatar}
-          alt={user.username}
-          className="h-8 w-8 rounded-full"
-        />
-      );
-    }
-    const seed = user.username || "default";
-    const avatarUrl = `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(seed)}`;
-    return (
-      <img
-        src={avatarUrl}
-        alt={user.username}
-        className="h-8 w-8 rounded-full bg-gray-700"
-      />
-    );
   };
 
   const handleDelete = (id, username) => {
@@ -568,7 +548,11 @@ export default function AdminUsers() {
                     <tr key={user.id || index} className="hover:bg-gray-700/30">
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center">
-                          {getAvatar(user)}
+                          <UserAvatar 
+                            user={user} 
+                            size="sm"
+                            className="ring-1 ring-gray-600"
+                          />
                           <div className="ml-3 text-sm font-medium text-white">
                             {user.username}
                           </div>

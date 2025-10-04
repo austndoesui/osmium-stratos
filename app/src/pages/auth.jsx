@@ -1,5 +1,4 @@
 import { useState, useContext, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../App';
 
 export default function Auth() {
@@ -11,7 +10,6 @@ export default function Auth() {
   const [apiError, setApiError] = useState('');
   const [panelName, setPanelName] = useState('Osmium');
   const [logoUrl, setLogoUrl] = useState('/favicon.webp');
-  const navigate = useNavigate();
   const { login } = useContext(AuthContext);
   
   // 2FA states
@@ -73,7 +71,7 @@ export default function Auth() {
         login(data.token);
         setSuccess(true);
       }
-    } catch (e) {
+    } catch {
       setApiError('Network error. Please try again later.');
     } finally {
       setLoading(false);
@@ -105,7 +103,7 @@ export default function Auth() {
         login(data.token);
         setSuccess(true);
       }
-    } catch (e) {
+    } catch {
       setApiError('Network error. Please try again later.');
     } finally {
       setLoading(false);

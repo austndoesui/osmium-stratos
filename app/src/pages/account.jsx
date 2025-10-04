@@ -1,9 +1,10 @@
 ﻿import { useState, useContext, useEffect } from "react";
 import MainLayout from "../components/mainlayout";
 import { AuthContext } from "../App";
+import UserAvatar from "../components/UserAvatar";
 
 export default function Account() {
-  const { user, logout } = useContext(AuthContext);
+  const { user } = useContext(AuthContext);
   const [formData, setFormData] = useState({
     username: user?.username || "",
     email: user?.email || "",
@@ -257,6 +258,43 @@ export default function Account() {
         <h1 className="text-2xl font-semibold text-white mb-6">
           Account Settings
         </h1>
+
+        {/* User Profile Header */}
+        <div className="bg-gray-800 rounded-lg overflow-hidden shadow-md mb-6">
+          <div className="p-6">
+            <div className="flex items-center space-x-4">
+              <UserAvatar 
+                user={user} 
+                size="xl"
+                className="ring-4 ring-gray-600"
+              />
+              <div className="flex-1">
+                <h2 className="text-xl font-semibold text-white">
+                  {user?.username || "User"}
+                </h2>
+                <p className="text-gray-400">
+                  {user?.email}
+                </p>
+                <div className="flex items-center mt-2">
+                  <span className={`
+                    inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                    ${user?.role === 'admin' 
+                      ? 'bg-purple-900/40 text-purple-400 border border-purple-700' 
+                      : 'bg-blue-900/40 text-blue-400 border border-blue-700'
+                    }
+                  `}>
+                    {user?.role === 'admin' ? '👑 Administrator' : '👤 User'}
+                  </span>
+                  {isTwoFactorEnabled && (
+                    <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/40 text-green-400 border border-green-700">
+                      🔐 2FA Enabled
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {successMessage && (
           <div className="bg-green-500 bg-opacity-20 border border-green-500 text-white px-4 py-3 rounded-md mb-6">

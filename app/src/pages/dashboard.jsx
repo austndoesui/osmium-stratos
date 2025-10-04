@@ -1,52 +1,49 @@
 import '../index.css';
-import { useState, useEffect, useContext } from 'react';
+import { useContext, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { AuthContext } from '../App';
 import MainLayout from '../components/mainlayout';
+import { useVMs } from '../hooks/useApi';
+import UserAvatar from '../components/UserAvatar';
 
 function Dashboard() {
   const { user } = useContext(AuthContext);
-  const [stats, setStats] = useState({
-    instances: 0,
-    running: 0,
-    stopped: 0
-  });
-  const [loading, setLoading] = useState(true);
+  const { data: vmsData = [], isLoading: loading, error } = useVMs();
 
-  useEffect(() => {
-    setLoading(true);
-    fetch('/api/vms')
-      .then(res => res.json())
-      .then(data => {
-        const allInstances = [];
-        data.forEach(({ host, vms }) => {
-          if (Array.isArray(vms)) {
-            vms.forEach(vm => {
-              allInstances.push({ ...vm, host });
-            });
-          }
+  // Memoize expensive calculations
+  const stats = useMemo(() => {
+    if (!vmsData.length || !user) {
+      return { instances: 0, running: 0, stopped: 0 };
+    }
+
+    const allInstances = [];
+    vmsData.forEach(({ host, vms }) => {
+      if (Array.isArray(vms)) {
+        vms.forEach(vm => {
+          allInstances.push({ ...vm, host });
         });
-        const userInstances = allInstances.filter(vm => {
-          if (!vm.owner || !user) return false;
-          return (
-            (vm.owner.username && vm.owner.username === user.username) ||
-            (vm.owner.email && vm.owner.email === user.email)
-          );
-        });
-        let totalInstances = userInstances.length;
-        let runningInstances = userInstances.filter(vm => vm.status === 'Running').length;
-        let stoppedInstances = userInstances.filter(vm => vm.status === 'Stopped').length;
-        setStats({
-          instances: totalInstances,
-          running: runningInstances,
-          stopped: stoppedInstances
-        });
-      })
-      .catch(err => {
-        console.error('Error fetching dashboard data:', err);
-        })
-      .finally(() => setLoading(false));
-  }, [user]);
+      }
+    });
+
+    const userInstances = allInstances.filter(vm => {
+      if (!vm.owner || !user) return false;
+      return (
+        (vm.owner.username && vm.owner.username === user.username) ||
+        (vm.owner.email && vm.owner.email === user.email)
+      );
+    });
+
+    return {
+      instances: userInstances.length,
+      running: userInstances.filter(vm => vm.status === 'Running').length,
+      stopped: userInstances.filter(vm => vm.status === 'Stopped').length
+    };
+  }, [vmsData, user]);
+
+  // Early error handling
+  if (error) {
+    console.error('Error fetching dashboard data:', error);
+  }
 
   const dashboardContent = (
     <div className="p-4 md:p-6">
@@ -71,8 +68,21 @@ function Dashboard() {
       </div>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-white">Welcome back, {user?.username || 'User'}</h1>
-        <p className="text-base text-gray-400">Here's what's happening with your instances</p>
+        <div className="flex items-center space-x-4">
+          <UserAvatar 
+            user={user} 
+            size="lg"
+            className="ring-2 ring-gray-600"
+          />
+          <div>
+            <h1 className="text-2xl font-semibold text-white">
+              Welcome back, {user?.username || 'User'}!
+            </h1>
+            <p className="text-base text-gray-400">
+              Here's what's happening with your instances
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">

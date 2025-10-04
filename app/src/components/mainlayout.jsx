@@ -1,6 +1,7 @@
 import { useState, useContext, useRef, useEffect } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { AuthContext } from "../App";
+import UserAvatar from "./UserAvatar";
 
 export default function MainLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -9,7 +10,6 @@ export default function MainLayout({ children }) {
   const [pageLoading, setPageLoading] = useState(true);
   const { user, logout } = useContext(AuthContext);
   const location = useLocation();
-  const navigate = useNavigate();
   const notificationRef = useRef(null);
   const loadingTimeoutRef = useRef(null);
 
@@ -31,11 +31,6 @@ export default function MainLayout({ children }) {
       }
     };
   }, [location.pathname]);
-
-  const generateAvatarUrl = (username) => {
-    const seed = username || "anonymous";
-    return `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(seed)}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
-  };
 
   const notifications = [
     {
@@ -322,10 +317,10 @@ export default function MainLayout({ children }) {
           <div className="p-4">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <img
-                  src={generateAvatarUrl(user?.username)}
-                  alt="User Avatar"
-                  className="h-10 w-10 rounded-md bg-gray-700"
+                <UserAvatar 
+                  user={user} 
+                  size="md"
+                  className="ring-2 ring-gray-600"
                 />
               </div>
               <div className="ml-3">

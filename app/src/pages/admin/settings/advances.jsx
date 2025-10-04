@@ -1,4 +1,3 @@
-import { useState } from "react";
 import SettingsLayout from "../../../components/settingslayout";
 
 export default function AdminAdvanced() {
